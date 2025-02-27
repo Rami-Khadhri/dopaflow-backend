@@ -59,6 +59,8 @@ public class User implements UserDetails {
     @Column(name = "two_factor_secret")
     private String twoFactorSecret;
 
+    @Column(name = "profile_photo_url")
+    private String profilePhotoUrl; // New field for profile photo URL
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore  // Add this annotation
     @ToString.Exclude

@@ -1,4 +1,3 @@
-// ProfileController.java (Updated)
 package crm.dopaflow_backend.Controller;
 
 import crm.dopaflow_backend.Model.User;
@@ -8,7 +7,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -20,6 +21,7 @@ public class ProfileController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
 
+
     @GetMapping("/profile")
     public ResponseEntity<?> getProfile(@RequestHeader("Authorization") String authHeader) {
         try {
@@ -27,8 +29,10 @@ public class ProfileController {
             Map<String, Object> profileData = Map.of(
                     "username", user.getUsername(),
                     "email", user.getEmail(),
+                    "role", user.getRole(),
                     "twoFactorEnabled", user.isTwoFactorEnabled(),
                     "lastLogin", user.getLastLogin(),
+                    "profilePhotoUrl", user.getProfilePhotoUrl() != null ? user.getProfilePhotoUrl() : "", // Return as-is, frontend will handle base URL
                     "loginHistory", user.getLoginHistory().stream()
                             .map(history -> Map.of(
                                     "ipAddress", history.getIpAddress(),
@@ -38,11 +42,44 @@ public class ProfileController {
                             ))
                             .collect(Collectors.toList())
             );
-            // Print only essential info instead of entire object to avoid recursion
-            System.out.println("Profile fetched for user: " + user.getUsername());
             return new ResponseEntity<>(profileData, HttpStatus.OK);
         } catch (Exception e) {
-            return new ResponseEntity<>(Map.of("message", "Invalid or missing token"), HttpStatus.UNAUTHORIZED);
+            return new ResponseEntity<>(Map.of("error", "Invalid or missing token"), HttpStatus.UNAUTHORIZED);
+        }
+    }
+
+    @PostMapping("/profile/upload-photo")
+    public ResponseEntity<?> uploadProfilePhoto(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam("photo") MultipartFile photo) {
+        try {
+            User user = userService.getUserFromToken(authHeader);
+            User updatedUser = userService.updateProfilePhoto(user.getEmail(), photo);
+            return new ResponseEntity<>(Map.of(
+                    "message", "Photo uploaded successfully",
+                    "photoUrl", updatedUser.getProfilePhotoUrl()
+            ), HttpStatus.OK);
+        } catch (IOException e) {
+            return new ResponseEntity<>(Map.of("error", "Photo upload failed: " + e.getMessage()),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @PutMapping("/profile/set-avatar")
+    public ResponseEntity<?> setDefaultAvatar(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody Map<String, String> payload) {
+        try {
+            User user = userService.getUserFromToken(authHeader);
+            String avatarUrl = payload.get("avatarUrl");
+            User updatedUser = userService.setDefaultAvatar(user.getEmail(), avatarUrl);
+            return new ResponseEntity<>(Map.of(
+                    "message", "Avatar set successfully",
+                    "photoUrl", updatedUser.getProfilePhotoUrl()
+            ), HttpStatus.OK);
+        } catch (Exception e) {
+            return new ResponseEntity<>(Map.of("error", "Failed to set avatar: " + e.getMessage()),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -53,23 +90,39 @@ public class ProfileController {
         try {
             User user = userService.getUserFromToken(authHeader);
             String username = (String) payload.get("username");
-            String currentPassword = (String) payload.get("currentPassword");
-            String newPassword = (String) payload.get("newPassword");
             Boolean twoFactorEnabled = (Boolean) payload.get("twoFactorEnabled");
 
             User updatedUser = userService.updateUser(
                     user.getEmail(),
                     username != null && !username.isEmpty() ? username : null,
-                    currentPassword,
-                    newPassword,
-                    twoFactorEnabled
+                    null, null, twoFactorEnabled
             );
-            return new ResponseEntity<>(updatedUser, HttpStatus.OK);
+            return new ResponseEntity<>(Map.of("message", "Profile updated successfully"), HttpStatus.OK);
         } catch (IllegalArgumentException e) {
-            return new ResponseEntity<>(Map.of("message", e.getMessage()), HttpStatus.BAD_REQUEST);
-        } catch (Exception e) {
-            return new ResponseEntity<>(Map.of("message", "Update failed: " + e.getMessage()),
-                    HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<>(Map.of("error", e.getMessage()), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @PutMapping("/profile/change-password")
+    public ResponseEntity<?> changePassword(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody Map<String, String> payload) {
+        try {
+            User user = userService.getUserFromToken(authHeader);
+            String currentPassword = payload.get("currentPassword");
+            String newPassword = payload.get("newPassword");
+
+            if (currentPassword == null || currentPassword.trim().isEmpty()) {
+                return new ResponseEntity<>(Map.of("error", "Current password is required"), HttpStatus.BAD_REQUEST);
+            }
+            if (newPassword == null || newPassword.trim().isEmpty()) {
+                return new ResponseEntity<>(Map.of("error", "New password is required"), HttpStatus.BAD_REQUEST);
+            }
+
+            userService.changeUserPassword(user.getEmail(), currentPassword, newPassword);
+            return new ResponseEntity<>(Map.of("message", "Password changed successfully"), HttpStatus.OK);
+        } catch (IllegalArgumentException e) {
+            return new ResponseEntity<>(Map.of("error", e.getMessage()), HttpStatus.BAD_REQUEST);
         }
     }
 }

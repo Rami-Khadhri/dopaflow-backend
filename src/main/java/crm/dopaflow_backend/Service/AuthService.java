@@ -3,6 +3,7 @@ package crm.dopaflow_backend.Service;
 
 import crm.dopaflow_backend.DTO.AuthDTO;
 import crm.dopaflow_backend.Model.LoginHistory;
+import crm.dopaflow_backend.Model.StatutUser;
 import crm.dopaflow_backend.Model.User;
 import crm.dopaflow_backend.Security.JwtUtil;
 import jakarta.mail.MessagingException;
@@ -45,7 +46,9 @@ public class AuthService {
         if (!user.getVerified()) {
             throw new RuntimeException("Email not verified");
         }
-
+        if (user.getStatus().equals(StatutUser.Suspended)) {
+            throw new RuntimeException("Account is suspended,Contact an admin");
+        }
         // Record login details
         String ipAddress = httpRequest.getRemoteAddr();
         String userAgent = httpRequest.getHeader("User-Agent");

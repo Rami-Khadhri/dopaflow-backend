@@ -1,6 +1,8 @@
 package crm.dopaflow_backend.Security;
 
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -15,7 +17,7 @@ public class JwtUtil {
     @Value("${jwt.secret}")
     private String secretKey;
 
-    @Value("${jwt.expiration}")
+    @Value("${jwt.expiration:86400000}") // Default to 24 hours if not specified
     private long expirationTime;
 
     private SecretKey getSigningKey() {
@@ -26,6 +28,11 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
+    /**
+     * Generates a JWT token for a given email.
+     * @param email The user's email as the subject of the token.
+     * @return A compact JWT string.
+     */
     public String generateToken(String email) {
         return Jwts.builder()
                 .setSubject(email)
@@ -35,6 +42,11 @@ public class JwtUtil {
                 .compact();
     }
 
+    /**
+     * Generates a temporary JWT token with a 5-minute expiration.
+     * @param email The user's email as the subject of the token.
+     * @return A compact JWT string.
+     */
     public String generateTempToken(String email) {
         return Jwts.builder()
                 .setSubject(email)
@@ -45,25 +57,49 @@ public class JwtUtil {
                 .compact();
     }
 
+    /**
+     * Extracts the email (subject) from a JWT token.
+     * @param token The JWT token string.
+     * @return The email extracted from the token.
+     */
     public String extractEmail(String token) {
         return parseClaims(token).getSubject();
     }
 
+    /**
+     * Validates a JWT token.
+     * @param token The JWT token string.
+     * @return True if the token is valid, false otherwise.
+     */
     public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder().setSigningKey(getSigningKey()).build().parseClaimsJws(token);
+            Jwts.parserBuilder()
+                    .setSigningKey(getSigningKey())
+                    .build()
+                    .parseClaimsJws(token);
             return true;
-        } catch (JwtException | IllegalArgumentException e) {
+        } catch (Exception e) {
+            System.out.println("Token validation failed: " + e.getMessage());
             return false;
         }
     }
 
+    /**
+     * Checks if a token is a temporary token.
+     * @param token The JWT token string.
+     * @return True if the token is temporary, false otherwise.
+     */
     public boolean isTempToken(String token) {
         Claims claims = parseClaims(token);
         Boolean isTemp = claims.get("temp", Boolean.class);
         return isTemp != null && isTemp;
     }
 
+    /**
+     * Parses the claims from a JWT token.
+     * @param token The JWT token string.
+     * @return The claims contained in the token.
+     */
     private Claims parseClaims(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())

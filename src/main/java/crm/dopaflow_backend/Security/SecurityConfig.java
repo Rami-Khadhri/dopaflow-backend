@@ -13,6 +13,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 @EnableWebSecurity
@@ -27,14 +29,33 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        JwtAuthFilter jwtAuthFilter = new JwtAuthFilter(jwtUtil,userServiceProvider);
+        JwtAuthFilter jwtAuthFilter = new JwtAuthFilter(jwtUtil, userServiceProvider);
 
         http
-                .csrf(csrf -> csrf.disable())
-                .cors(cors -> cors.configure(http))
+                .csrf(csrf -> csrf.disable()) // Disable CSRF for stateless API
+                .cors(cors -> cors.configure(http)) // Enable CORS
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/verify-email","/api/users/**","/api/auth/forgot-password","/api/auth/reset-password").permitAll()
-                        .requestMatchers("/api/auth/2fa/**").authenticated()
+                        // Public endpoints
+                        .requestMatchers(
+                                "/api/auth/login",
+                                "/api/auth/register",
+                                "/api/auth/verify-email",
+                                "/api/users/**",
+                                "/api/auth/forgot-password",
+                                "/api/auth/reset-password",
+                                "/api/profile/upload-photo",
+                                "/api/profile/set-avatar",
+                                "/static/**",
+                                "/photos/**", // Serve uploaded photos
+                                "/contact-photos/**", // Serve uploaded photos
+                                "/avatars/**", // Serve static avatars
+                                "/media/**"
+                        ).permitAll()
+                        // Authenticated endpoints
+                        .requestMatchers("/api/auth/2fa/**",
+                                "/api/contacts/**",
+                                "/api/users/**"
+                        ).authenticated()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -46,6 +67,28 @@ public class SecurityConfig {
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
         return authenticationConfiguration.getAuthenticationManager();
+    }
+
+    @Bean
+    public WebMvcConfigurer webMvcConfigurer() {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addResourceHandlers(ResourceHandlerRegistry registry) {
+                // Map /photos/ to file:uploads/photos/
+                registry.addResourceHandler("/photos/**")
+                        .addResourceLocations("file:uploads/photos/")
+                        .setCachePeriod(0); // Disable caching for development
+
+                registry.addResourceHandler("/contact-photos/**")
+                        .addResourceLocations("file:uploads/contact-photos/")
+                        .setCachePeriod(0); // Disable caching for development
+
+                // Map /avatars/ to file:uploads/avatars/
+                registry.addResourceHandler("/avatars/**")
+                        .addResourceLocations("file:uploads/avatars/")
+                        .setCachePeriod(0); // Disable caching for development
+            }
+        };
     }
 
     @Bean

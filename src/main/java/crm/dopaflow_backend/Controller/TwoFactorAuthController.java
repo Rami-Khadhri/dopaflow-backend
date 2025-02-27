@@ -27,7 +27,12 @@ public class TwoFactorAuthController {
             user.setTwoFactorSecret(secret);
             userService.saveUser(user);
             String qrCodeUrl = twoFactorService.getQRCodeUrl(user.getEmail(), secret);
-            return ResponseEntity.ok(Map.of("qrUrl", qrCodeUrl, "message", "Scan this QR code"));
+            // Return both QR code URL and secret key
+            return ResponseEntity.ok(Map.of(
+                    "qrUrl", qrCodeUrl,
+                    "secret", secret,
+                    "message", "Scan this QR code or enter the secret manually"
+            ));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "Access denied: Invalid or missing token"));
