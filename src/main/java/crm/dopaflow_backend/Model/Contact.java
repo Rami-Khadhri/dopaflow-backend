@@ -45,7 +45,8 @@ public class Contact {
     private LocalDateTime lastActivity;
 
     private String photoUrl;
-
+    @Transient
+    private String ownerUsername;
     @PrePersist
     protected void onPrePersist() {
         if (createdAt == null) createdAt = LocalDateTime.now();

@@ -107,4 +107,18 @@ public class JwtUtil {
                 .parseClaimsJws(token)
                 .getBody();
     }
+
+    /**
+     * Extracts the email from a JWT token in the Authorization header.
+     * @param authHeader The Authorization header containing the Bearer token.
+     * @return The email (subject) extracted from the token.
+     * @throws IllegalArgumentException if the token is invalid or missing.
+     */
+    public String getEmailFromToken(String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new IllegalArgumentException("Invalid or missing token");
+        }
+        String token = authHeader.substring(7); // Remove "Bearer " prefix
+        return extractEmail(token);
+    }
 }

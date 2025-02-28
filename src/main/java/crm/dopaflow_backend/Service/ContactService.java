@@ -176,7 +176,46 @@ public class ContactService {
         }
         return csv.toString().getBytes();
     }
+    public List<Contact> bulkCreateContacts(List<Contact> contacts) {
+        return contactRepository.saveAll(contacts.stream().map(contact -> {
+            // Set default values if null/empty
+            if (contact.getName() == null || contact.getName().trim().isEmpty()) {
+                contact.setName(null); // Allow null for flexibility
+            }
+            if (contact.getEmail() == null || contact.getEmail().trim().isEmpty()) {
+                contact.setEmail(null); // Allow null for flexibility
+            }
+            if (contact.getPhone() == null || contact.getPhone().trim().isEmpty()) {
+                contact.setPhone(null); // Allow null for flexibility
+            }
+            if (contact.getStatus() == null || contact.getStatus().trim().isEmpty()) {
+                contact.setStatus("Open"); // Allow null for flexibility
+            }
+            if (contact.getCompany() == null || contact.getCompany().trim().isEmpty()) {
+                contact.setCompany(null); // Allow null for flexibility
+            }
+            if (contact.getNotes() == null || contact.getNotes().trim().isEmpty()) {
+                contact.setNotes(null); // Allow null for flexibility
+            }
 
+            // Set creation and last activity timestamps
+            contact.setCreatedAt(LocalDateTime.now());
+            contact.setLastActivity(LocalDateTime.now());
+
+            // Handle owner by username if provided
+            if (contact.getOwnerUsername() != null && !contact.getOwnerUsername().trim().isEmpty()) {
+                User owner = userRepository.findByUsername(contact.getOwnerUsername()).orElse(null);
+                contact.setOwner(owner);
+            }
+            contact.setOwnerUsername(null); // Clear temporary username field after mapping
+
+            return contact;
+        }).collect(Collectors.toList()));
+    }
+
+    public User getUserByUsername(String username) {
+        return userRepository.findByUsername(username).orElse(null);
+    }
     private String escapeCsv(String value) {
         return value == null ? "" : "\"" + value.replace("\"", "\"\"") + "\"";
     }

@@ -1,7 +1,9 @@
 package crm.dopaflow_backend.Controller;
 
+import crm.dopaflow_backend.Model.Notification;
 import crm.dopaflow_backend.Model.User;
 import crm.dopaflow_backend.Security.JwtUtil;
+import crm.dopaflow_backend.Service.NotificationService;
 import crm.dopaflow_backend.Service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -10,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -20,12 +23,14 @@ import java.util.stream.Collectors;
 public class ProfileController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
-
+    private final NotificationService notificationService;
 
     @GetMapping("/profile")
     public ResponseEntity<?> getProfile(@RequestHeader("Authorization") String authHeader) {
         try {
-            User user = userService.getUserFromToken(authHeader);
+            String email = jwtUtil.getEmailFromToken(authHeader);
+            User user = userService.findByEmail(email)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found for email: " + email));
             Map<String, Object> profileData = Map.of(
                     "username", user.getUsername(),
                     "email", user.getEmail(),
@@ -53,7 +58,9 @@ public class ProfileController {
             @RequestHeader("Authorization") String authHeader,
             @RequestParam("photo") MultipartFile photo) {
         try {
-            User user = userService.getUserFromToken(authHeader);
+            String email = jwtUtil.getEmailFromToken(authHeader);
+            User user = userService.findByEmail(email)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found for email: " + email));
             User updatedUser = userService.updateProfilePhoto(user.getEmail(), photo);
             return new ResponseEntity<>(Map.of(
                     "message", "Photo uploaded successfully",
@@ -70,7 +77,9 @@ public class ProfileController {
             @RequestHeader("Authorization") String authHeader,
             @RequestBody Map<String, String> payload) {
         try {
-            User user = userService.getUserFromToken(authHeader);
+            String email = jwtUtil.getEmailFromToken(authHeader);
+            User user = userService.findByEmail(email)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found for email: " + email));
             String avatarUrl = payload.get("avatarUrl");
             User updatedUser = userService.setDefaultAvatar(user.getEmail(), avatarUrl);
             return new ResponseEntity<>(Map.of(
@@ -88,7 +97,9 @@ public class ProfileController {
             @RequestHeader("Authorization") String authHeader,
             @RequestBody Map<String, Object> payload) {
         try {
-            User user = userService.getUserFromToken(authHeader);
+            String email = jwtUtil.getEmailFromToken(authHeader);
+            User user = userService.findByEmail(email)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found for email: " + email));
             String username = (String) payload.get("username");
             Boolean twoFactorEnabled = (Boolean) payload.get("twoFactorEnabled");
 
@@ -108,7 +119,9 @@ public class ProfileController {
             @RequestHeader("Authorization") String authHeader,
             @RequestBody Map<String, String> payload) {
         try {
-            User user = userService.getUserFromToken(authHeader);
+            String email = jwtUtil.getEmailFromToken(authHeader);
+            User user = userService.findByEmail(email)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found for email: " + email));
             String currentPassword = payload.get("currentPassword");
             String newPassword = payload.get("newPassword");
 
@@ -120,6 +133,12 @@ public class ProfileController {
             }
 
             userService.changeUserPassword(user.getEmail(), currentPassword, newPassword);
+            // Notify user about password change
+            notificationService.createNotification(
+                    user,
+                    "Your password has been successfully changed.",
+                    Notification.NotificationType.PASSWORD_CHANGE
+            );
             return new ResponseEntity<>(Map.of("message", "Password changed successfully"), HttpStatus.OK);
         } catch (IllegalArgumentException e) {
             return new ResponseEntity<>(Map.of("error", e.getMessage()), HttpStatus.BAD_REQUEST);
