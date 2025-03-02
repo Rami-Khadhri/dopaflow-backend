@@ -45,6 +45,7 @@ public class Contact {
     private LocalDateTime lastActivity;
 
     private String photoUrl;
+
     @Transient
     private String ownerUsername;
     @PrePersist
