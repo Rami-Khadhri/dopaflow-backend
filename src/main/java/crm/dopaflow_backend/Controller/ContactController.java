@@ -1,9 +1,17 @@
 package crm.dopaflow_backend.Controller;
-
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.*;
+import java.util.regex.Pattern;
 import crm.dopaflow_backend.Model.Contact;
 import crm.dopaflow_backend.Model.User;
 import crm.dopaflow_backend.Service.ContactService;
 import lombok.RequiredArgsConstructor;
+import org.apache.poi.ss.usermodel.*;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +25,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+
+import static java.sql.JDBCType.BOOLEAN;
+import static java.sql.JDBCType.NUMERIC;
+import static javax.management.openmbean.SimpleType.STRING;
 
 @RestController
 @RequestMapping("/api/contacts")
@@ -99,112 +111,263 @@ public class ContactController {
         contactService.deleteContact(id);
         return ResponseEntity.ok().build();
     }
-    @PostMapping("/import/csv")
-    public ResponseEntity<Map<String, Object>> importContactsFromCsv(@RequestParam("file") MultipartFile file) {
+
+
+    @PostMapping("/import")
+    public ResponseEntity<Map<String, Object>> importContacts(@RequestParam("file") MultipartFile file, @RequestParam("type") String fileType) {
+        Map<String, Object> response = new HashMap<>();
         try {
-            List<Contact> contacts = parseCsv(file);
+            List<Contact> contacts;
+            if ("csv".equalsIgnoreCase(fileType)) {
+                contacts = parseCsv(file);
+            } else if ("excel".equalsIgnoreCase(fileType)) {
+                contacts = parseExcel(file);
+            } else {
+                throw new IllegalArgumentException("Invalid file type. Use 'csv' or 'excel'.");
+            }
             List<Contact> savedContacts = contactService.bulkCreateContacts(contacts);
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Imported " + savedContacts.size() + " contacts successfully");
-            response.put("unmappedFields", getUnmappedFields()); // Track unmapped fields for feedback
+            response.put("message", "Imported " + savedContacts.size() + " contacts from " + contacts.size() + " parsed rows");
+            response.put("unmappedFields", getUnmappedFields());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "Import failed: " + e.getMessage()));
+            response.put("error", "Import processed with issues: " + e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        } finally {
+            unmappedFields.remove();
         }
     }
 
     private List<Contact> parseCsv(MultipartFile file) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
+        final Pattern EMAIL_PATTERN = Pattern.compile("^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$", Pattern.CASE_INSENSITIVE);
+        final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[1-9]\\d{1,14}$");
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()));
+             CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader()
+                     .withTrim()
+                     .withAllowMissingColumnNames()
+                     .withIgnoreEmptyLines()
+                     .withIgnoreHeaderCase())) {
+
             List<Contact> contacts = new ArrayList<>();
-            String line;
-            String[] headers = null;
-
-            // Read headers
-            if ((line = reader.readLine()) != null) {
-                headers = line.split(",");
-                for (int i = 0; i < headers.length; i++) {
-                    headers[i] = headers[i].trim().replaceAll("^\"|\"$", ""); // Remove quotes
-                }
-            }
-
-            if (headers == null || headers.length == 0) {
-                throw new IOException("No headers found in CSV file");
-            }
-
-            // Define possible mappings for Contact fields (case-insensitive)
-            Map<String, String> fieldMappings = new HashMap<>();
-            fieldMappings.put("name", "name");
-            fieldMappings.put("full name", "name"); // Flexible aliases
-            fieldMappings.put("first name", "name");
-            fieldMappings.put("last name", "name");
-            fieldMappings.put("email", "email");
-            fieldMappings.put("e-mail", "email");
-            fieldMappings.put("phone", "phone");
-            fieldMappings.put("phone number", "phone");
-            fieldMappings.put("telephone", "phone");
-            fieldMappings.put("lead status", "status");
-            fieldMappings.put("status", "status");
-            fieldMappings.put("company", "company");
-            fieldMappings.put("organization", "company");
-            fieldMappings.put("notes", "notes");
-            fieldMappings.put("comments", "notes");
-            fieldMappings.put("contact owner", "ownerUsername"); // Store username for later lookup
-
-            // Track unmapped fields for feedback
             Set<String> unmappedFields = new HashSet<>();
-            for (String header : headers) {
-                if (!fieldMappings.containsKey(header.toLowerCase())) {
-                    unmappedFields.add(header);
+            Map<String, String> fieldMappings = new HashMap<>();
+            Set<String> nameHints = Set.of("name", "first", "last", "full", "surname", "given", "username", "thename");
+
+            // Dynamic header mapping
+            if (csvParser.getHeaderNames() != null) {
+                for (String header : csvParser.getHeaderNames()) {
+                    String lowerHeader = header.toLowerCase();
+                    if (nameHints.stream().anyMatch(lowerHeader::contains)) {
+                        fieldMappings.put(lowerHeader, "name");
+                    } else if (lowerHeader.contains("email")) {
+                        fieldMappings.put(lowerHeader, "email");
+                    } else if (lowerHeader.contains("phone") || lowerHeader.contains("mobile")) {
+                        fieldMappings.put(lowerHeader, "phone");
+                    } else if (lowerHeader.contains("status")) {
+                        fieldMappings.put(lowerHeader, "status");
+                    } else if (lowerHeader.contains("company")) {
+                        fieldMappings.put(lowerHeader, "company");
+                    } else if (lowerHeader.contains("notes")) {
+                        fieldMappings.put(lowerHeader, "notes");
+                    } else if (lowerHeader.contains("owner")) {
+                        fieldMappings.put(lowerHeader, "ownerUsername");
+                    } else {
+                        unmappedFields.add(header);
+                    }
                 }
             }
-            setUnmappedFields(unmappedFields); // Store for response
+            setUnmappedFields(unmappedFields);
 
-            // Read data rows
-            while ((line = reader.readLine()) != null) {
-                if (line.trim().isEmpty()) continue; // Skip empty lines
-                String[] values = line.split(",");
+            for (CSVRecord record : csvParser) {
                 Contact contact = new Contact();
+                boolean hasName = false;
 
-                for (int i = 0; i < headers.length && i < values.length; i++) {
-                    String value = values[i].trim().replaceAll("^\"|\"$", ""); // Remove quotes
-                    String mappedField = fieldMappings.getOrDefault(headers[i].toLowerCase(), null);
+                for (String header : csvParser.getHeaderNames()) {
+                    String value = record.isSet(header) ? record.get(header).trim() : "";
+                    String mappedField = fieldMappings.getOrDefault(header.toLowerCase(), null);
 
                     if (mappedField != null) {
                         switch (mappedField) {
                             case "name":
-                                contact.setName(value.isEmpty() ? null : value);
+                                if (!value.isEmpty()) {
+                                    contact.setName(value);
+                                    hasName = true;
+                                }
                                 break;
                             case "email":
-                                contact.setEmail(value.isEmpty() ? null : value);
+                                if (!value.isEmpty() && EMAIL_PATTERN.matcher(value).matches()) {
+                                    contact.setEmail(value);
+                                } else if (!value.isEmpty()) {
+                                    String notes = contact.getNotes() != null ? contact.getNotes() + "; " : "";
+                                    contact.setNotes(notes + "Invalid email: " + value);
+                                }
                                 break;
                             case "phone":
-                                contact.setPhone(value.isEmpty() ? null : value);
+                                String normalizedPhone = value.replaceAll("[^0-9+]", "");
+                                if (!normalizedPhone.isEmpty() && PHONE_PATTERN.matcher(normalizedPhone).matches()) {
+                                    contact.setPhone(normalizedPhone);
+                                } else if (!normalizedPhone.isEmpty()) {
+                                    String notes = contact.getNotes() != null ? contact.getNotes() + "; " : "";
+                                    contact.setNotes(notes + "Invalid phone: " + value);
+                                }
                                 break;
                             case "status":
-                                contact.setStatus(value.isEmpty() ? null : value);
+                                if (!value.isEmpty()) {
+                                    contact.setStatus(value.equalsIgnoreCase("open") || value.equalsIgnoreCase("closed") ? value : "N/A");
+                                }
                                 break;
                             case "company":
-                                contact.setCompany(value.isEmpty() ? null : value);
+                                if (!value.isEmpty()) {
+                                    contact.setCompany(value);
+                                }
                                 break;
                             case "notes":
-                                contact.setNotes(value.isEmpty() ? null : value);
+                                if (!value.isEmpty()) {
+                                    contact.setNotes(value);
+                                }
                                 break;
                             case "ownerUsername":
                                 if (!value.isEmpty()) {
-                                    contact.setOwnerUsername(value); // Temporarily store username
+                                    contact.setOwnerUsername(value);
                                 }
                                 break;
-                            default:
-                                break;
                         }
+                    } else if (!value.isEmpty()) {
+                        String notes = contact.getNotes() != null ? contact.getNotes() + "; " : "";
+                        contact.setNotes(notes + header + ": " + value);
                     }
                 }
 
-                // Basic validation (optional, can be removed for full flexibility)
-                contacts.add(contact);
+                if (hasName) {
+                    if (contact.getStatus() == null) {
+                        contact.setStatus("N/A");
+                    }
+                    contacts.add(contact);
+                }
             }
-
             return contacts;
+        }
+    }
+
+    private List<Contact> parseExcel(MultipartFile file) throws IOException {
+        final Pattern EMAIL_PATTERN = Pattern.compile("^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$", Pattern.CASE_INSENSITIVE);
+        final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[1-9]\\d{1,14}$");
+
+        try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
+            Sheet sheet = workbook.getSheetAt(0);
+            List<Contact> contacts = new ArrayList<>();
+            Set<String> unmappedFields = new HashSet<>();
+            Map<String, String> fieldMappings = new HashMap<>();
+            Set<String> nameHints = Set.of("name", "first", "last", "full", "surname", "given", "username", "thename");
+
+            // Parse headers
+            Row headerRow = sheet.getRow(0);
+            if (headerRow != null) {
+                for (Cell cell : headerRow) {
+                    String header = cell.getStringCellValue().trim().toLowerCase();
+                    if (nameHints.stream().anyMatch(header::contains)) {
+                        fieldMappings.put(header, "name");
+                    } else if (header.contains("email")) {
+                        fieldMappings.put(header, "email");
+                    } else if (header.contains("phone") || header.contains("mobile")) {
+                        fieldMappings.put(header, "phone");
+                    } else if (header.contains("status")) {
+                        fieldMappings.put(header, "status");
+                    } else if (header.contains("company")) {
+                        fieldMappings.put(header, "company");
+                    } else if (header.contains("notes")) {
+                        fieldMappings.put(header, "notes");
+                    } else if (header.contains("owner")) {
+                        fieldMappings.put(header, "ownerUsername");
+                    } else {
+                        unmappedFields.add(header);
+                    }
+                }
+            }
+            setUnmappedFields(unmappedFields);
+
+            // Parse rows
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) continue;
+                Contact contact = new Contact();
+                boolean hasName = false;
+
+                for (Cell cell : row) {
+                    String header = headerRow.getCell(cell.getColumnIndex()).getStringCellValue().trim().toLowerCase();
+                    String value = getCellValue(cell);
+                    String mappedField = fieldMappings.getOrDefault(header, null);
+
+                    if (mappedField != null) {
+                        switch (mappedField) {
+                            case "name":
+                                if (!value.isEmpty()) {
+                                    contact.setName(value);
+                                    hasName = true;
+                                }
+                                break;
+                            case "email":
+                                if (!value.isEmpty() && EMAIL_PATTERN.matcher(value).matches()) {
+                                    contact.setEmail(value);
+                                } else if (!value.isEmpty()) {
+                                    String notes = contact.getNotes() != null ? contact.getNotes() + "; " : "";
+                                    contact.setNotes(notes + "Invalid email: " + value);
+                                }
+                                break;
+                            case "phone":
+                                String normalizedPhone = value.replaceAll("[^0-9+]", "");
+                                if (!normalizedPhone.isEmpty() && PHONE_PATTERN.matcher(normalizedPhone).matches()) {
+                                    contact.setPhone(normalizedPhone);
+                                } else if (!normalizedPhone.isEmpty()) {
+                                    String notes = contact.getNotes() != null ? contact.getNotes() + "; " : "";
+                                    contact.setNotes(notes + "Invalid phone: " + value);
+                                }
+                                break;
+                            case "status":
+                                if (!value.isEmpty()) {
+                                    contact.setStatus(value.equalsIgnoreCase("open") || value.equalsIgnoreCase("closed") ? value : "N/A");
+                                }
+                                break;
+                            case "company":
+                                if (!value.isEmpty()) {
+                                    contact.setCompany(value);
+                                }
+                                break;
+                            case "notes":
+                                if (!value.isEmpty()) {
+                                    contact.setNotes(value);
+                                }
+                                break;
+                            case "ownerUsername":
+                                if (!value.isEmpty()) {
+                                    contact.setOwnerUsername(value);
+                                }
+                                break;
+                        }
+                    } else if (!value.isEmpty()) {
+                        String notes = contact.getNotes() != null ? contact.getNotes() + "; " : "";
+                        contact.setNotes(notes + header + ": " + value);
+                    }
+                }
+
+                if (hasName) {
+                    if (contact.getStatus() == null) {
+                        contact.setStatus("N/A");
+                    }
+                    contacts.add(contact);
+                }
+            }
+            return contacts;
+        }
+    }
+
+    private String getCellValue(Cell cell) {
+        if (cell == null) return "";
+        switch (cell.getCellType()) {
+            case STRING: return cell.getStringCellValue().trim();
+            case NUMERIC: return String.valueOf((long) cell.getNumericCellValue());
+            case BOOLEAN: return String.valueOf(cell.getBooleanCellValue());
+            default: return "";
         }
     }
 
@@ -218,12 +381,24 @@ public class ContactController {
     private Set<String> getUnmappedFields() {
         return unmappedFields.get() != null ? new HashSet<>(unmappedFields.get()) : new HashSet<>();
     }
-    @GetMapping("/export/csv")
-    public ResponseEntity<byte[]> exportContactsToCsv(@RequestParam("columns") String columns) {
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportContacts(@RequestParam("columns") String columns, @RequestParam("type") String fileType) throws IOException {
         List<String> columnList = Arrays.asList(columns.split(","));
-        byte[] csvData = contactService.exportContactsToCsv(columnList);
+        byte[] data;
+        String filename;
+
+        if ("csv".equalsIgnoreCase(fileType)) {
+            data = contactService.exportContactsToCsv(columnList);
+            filename = "contacts.csv";
+        } else if ("excel".equalsIgnoreCase(fileType)) {
+            data = contactService.exportContactsToExcel(columnList);
+            filename = "contacts.xlsx";
+        } else {
+            throw new IllegalArgumentException("Invalid file type. Use 'csv' or 'excel'.");
+        }
+
         return ResponseEntity.ok()
-                .header("Content-Disposition", "attachment; filename=contacts.csv")
-                .body(csvData);
+                .header("Content-Disposition", "attachment; filename=" + filename)
+                .body(data);
     }
 }

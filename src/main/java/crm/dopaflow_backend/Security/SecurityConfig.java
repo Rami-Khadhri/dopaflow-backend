@@ -54,7 +54,8 @@ public class SecurityConfig {
                         // Authenticated endpoints
                         .requestMatchers("/api/auth/2fa/**",
                                 "/api/contacts/**",
-                                "/api/users/**"
+                                "/api/users/**",
+                                "/api/opportunities/**" // Add this line
                         ).authenticated()
                         .anyRequest().authenticated()
                 )

@@ -61,8 +61,9 @@ public class User implements UserDetails {
 
     @Column(name = "profile_photo_url")
     private String profilePhotoUrl; // New field for profile photo URL
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @JsonIgnore  // Add this annotation
+    @JsonIgnore
     @ToString.Exclude
     private List<LoginHistory> loginHistory = new ArrayList<>();
 
@@ -89,6 +90,13 @@ public class User implements UserDetails {
     @Override
     public boolean isCredentialsNonExpired() {
         return true;
+    }
+
+    public User(String username, String email, String password, Date birthdate) {
+        this.username = username;
+        this.email = email;
+        this.password = password;
+        this.birthdate = birthdate;
     }
 
     @Override

@@ -1,10 +1,13 @@
 package crm.dopaflow_backend.Model;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "contacts")
@@ -48,6 +51,10 @@ public class Contact {
 
     @Transient
     private String ownerUsername;
+
+    @OneToMany(mappedBy = "contact", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "contact"})
+    private List<Opportunity> opportunities = new ArrayList<>();
     @PrePersist
     protected void onPrePersist() {
         if (createdAt == null) createdAt = LocalDateTime.now();
