@@ -16,12 +16,14 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
 
-    public void createNotification(User user, String message, Notification.NotificationType type) {
+    public void createNotification(User user, String message, String link, Notification.NotificationType type) {
         Notification notification = new Notification();
         notification.setUser(user);
         notification.setMessage(message);
+        notification.setLink(link);
         notification.setType(type);
         notification.setTimestamp(LocalDateTime.now());
+        notification.setRead(false);
         notificationRepository.save(notification);
     }
 
@@ -50,5 +52,10 @@ public class NotificationService {
         List<Notification> notifications = notificationRepository.findByUserAndIsReadFalseOrderByTimestampDesc(user);
         notifications.forEach(notification -> notification.setRead(true));
         notificationRepository.saveAll(notifications);
+    }
+
+    public Notification getNotificationById(Long notificationId) {
+        return notificationRepository.findById(notificationId)
+                .orElseThrow(() -> new RuntimeException("Notification not found with ID: " + notificationId));
     }
 }

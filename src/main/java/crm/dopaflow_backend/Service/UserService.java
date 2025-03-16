@@ -4,8 +4,12 @@ import crm.dopaflow_backend.Model.*;
 import crm.dopaflow_backend.Repository.UserRepository;
 import crm.dopaflow_backend.Security.JwtUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -14,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +36,9 @@ public class UserService {
     public User registerUser(String username, String email, String password, Role role, Date birthdate) {
         if (userRepository.findByEmail(email).isPresent()) {
             throw new RuntimeException("Email already registered");
+        }
+        if (userRepository.findByUsername(username).isPresent()) {
+            throw new RuntimeException("Username already taken");
         }
         User user = User.builder()
                 .username(username)
@@ -50,6 +58,9 @@ public class UserService {
 
     public Optional<User> findByEmail(String email) {
         return userRepository.findByEmail(email);
+    }
+    public User findUserByEmail(String email) {
+        return userRepository.findUserByEmail(email);
     }
 
     public User verifyEmail(String token) {
@@ -76,7 +87,7 @@ public class UserService {
         return userRepository.findByVerificationToken(token);
     }
 
-    public User updateProfile(String email, String username, String currentPassword, String newPassword, Date birthdate ,Boolean twoFactorEnabled) {
+    public User updateProfile(String email, String username, String currentPassword, String newPassword, Date birthdate, Boolean twoFactorEnabled) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -85,7 +96,6 @@ public class UserService {
                 throw new IllegalArgumentException("Username already taken");
             }
             user.setUsername(username);
-
         }
 
         if (newPassword != null && !newPassword.isEmpty()) {
@@ -141,6 +151,11 @@ public class UserService {
         return userRepository.findAll();
     }
 
+    public User findById(Long id) {
+        return userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User with ID " + id + " not found"));
+    }
+
     public Optional<User> getUserById(Long id) {
         return userRepository.findById(id);
     }
@@ -188,6 +203,7 @@ public class UserService {
         // 4. Delete the user (JPA will cascade to LoginHistory if cascade = CascadeType.ALL is set)
         userRepository.delete(user);
     }
+
     public User changeUserPassword(String email, String currentPassword, String newPassword) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -243,5 +259,26 @@ public class UserService {
         String normalizedAvatarUrl = "/avatars/" + avatarUrl.replaceAll("^/+", ""); // Remove leading slashes from avatarUrl
         user.setProfilePhotoUrl(normalizedAvatarUrl);
         return userRepository.save(user);
+    }
+
+    public User findByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+    }
+
+    // Find multiple users by a list of IDs
+    public List<User> findAllByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of(); // Return an empty list if the input list is null or empty
+        }
+        return userRepository.findAllById(ids).stream()
+                .filter(user -> ids.contains(user.getId()))
+                .collect(Collectors.toList());
+    }
+    @Transactional(readOnly = true)
+    public List<User> getUsersByIds(List<Long> userIds) {
+        return userRepository.findAllById(userIds).stream()
+                .filter(user -> userIds.contains(user.getId()))
+                .collect(Collectors.toList());
     }
 }

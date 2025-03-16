@@ -6,6 +6,7 @@ import crm.dopaflow_backend.Service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -14,11 +15,31 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
 public class UsersController {
 
     private final UserService userService;
+    @GetMapping("/me")
+    public ResponseEntity<User> getCurrentUser(Authentication authentication) {
+        User user = userService.findByEmail(authentication.getName()).orElse(null);
+        if (user == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(user);
+    }
+    @GetMapping("/{id}/photo")
+    public ResponseEntity<String> getUserPhoto(@PathVariable Long id) {
+        try {
+            User user = userService.getUserById(id)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
 
+            String photoUrl = user.getProfilePhotoUrl(); // Assuming photo is a String URL in User model
+            if (photoUrl == null || photoUrl.isEmpty()) {
+                return ResponseEntity.ok("https://i.sstatic.net/l60Hf.png"); // Default placeholder
+            }
+
+            return ResponseEntity.ok(photoUrl);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null);
+        }
+    }
     @GetMapping("/all")
     public ResponseEntity<List<User>> getAllUsers() {
         try {

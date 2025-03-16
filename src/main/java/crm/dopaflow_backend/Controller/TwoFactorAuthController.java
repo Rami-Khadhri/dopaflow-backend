@@ -16,7 +16,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/auth/2fa")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+
 public class TwoFactorAuthController {
 
     private final TwoFactorAuthService twoFactorService;
@@ -69,13 +69,16 @@ public class TwoFactorAuthController {
                     notificationService.createNotification(
                             user,
                             "Two-Factor Authentication has been enabled for your account.",
+                            null,
                             Notification.NotificationType.TWO_FA_ENABLED
                     );
                 } else {
                     notificationService.createNotification(
                             user,
                             "Two-Factor Authentication has been disabled for your account.",
+                            null,
                             Notification.NotificationType.TWO_FA_DISABLED
+
                     );
                 }
                 return ResponseEntity.ok(Map.of("message", "2FA " + (wasEnabled ? "disabled" : "enabled") + " successfully"));

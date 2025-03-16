@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+
 public class ProfileController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
@@ -162,10 +162,11 @@ public class ProfileController {
             userService.changeUserPassword(user.getEmail(), currentPassword, newPassword);
             // Notify user about password change
             notificationService.createNotification(
-                    user,
+                                user,
                     "Your password has been successfully changed.",
+                    null,
                     Notification.NotificationType.PASSWORD_CHANGE
-            );
+                        );
             return new ResponseEntity<>(Map.of("message", "Password changed successfully"), HttpStatus.OK);
         } catch (IllegalArgumentException e) {
             return new ResponseEntity<>(Map.of("error", e.getMessage()), HttpStatus.BAD_REQUEST);

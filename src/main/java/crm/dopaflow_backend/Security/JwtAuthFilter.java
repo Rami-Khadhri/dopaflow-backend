@@ -10,6 +10,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -32,6 +33,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 path.startsWith("/api/auth/verify-email") ||
                 path.startsWith("/api/auth/forgot-password") ||
                 path.startsWith("/api/auth/reset-password");
+
+
     }
 
     @Override
@@ -51,8 +54,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     UserService userService = userServiceProvider.getObject();
                     User user = userService.findByEmail(email)
                             .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
+                    System.out.println("Authentication set for user: " + email);
+
+                    // Set email as principal and User as details
                     UsernamePasswordAuthenticationToken authentication =
-                            new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
+                            new UsernamePasswordAuthenticationToken(email, null, user.getAuthorities());
+                    authentication.setDetails(user); // Set User object in details
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request)); // Add request details
+
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 } else {
                     System.out.println("Token validation failed for token: " + token.substring(0, Math.min(token.length(), 10)) + "...");

@@ -33,7 +33,6 @@ import static javax.management.openmbean.SimpleType.STRING;
 @RestController
 @RequestMapping("/api/contacts")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000", allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS})
 public class ContactController {
     private final ContactService contactService;
     private static final String UPLOAD_DIR = "uploads/contact-photos/";

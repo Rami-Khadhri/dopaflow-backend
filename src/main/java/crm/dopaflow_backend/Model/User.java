@@ -108,4 +108,5 @@ public class User implements UserDetails {
         loginHistory.add(history);
         history.setUser(this);
     }
+
 }

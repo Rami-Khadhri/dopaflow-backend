@@ -14,7 +14,7 @@ import java.math.BigDecimal;
 @RestController
 @RequestMapping("/api/opportunities")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000", allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS})
+
 public class OpportunityController {
     private final OpportunityService opportunityService;
 
