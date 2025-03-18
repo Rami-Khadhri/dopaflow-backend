@@ -50,7 +50,9 @@ public class SecurityConfig {
                                 "/photos/**", // Serve uploaded photos
                                 "/contact-photos/**", // Serve uploaded photos
                                 "/avatars/**",
-                                "/api/ai/**"
+                                "/api/ai/**",
+                                "/api/users/all", // Explicitly public
+                                "/ws/**"
 
                         ).permitAll()
                         // Authenticated endpoints

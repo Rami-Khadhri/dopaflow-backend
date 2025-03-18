@@ -8,6 +8,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -66,7 +67,8 @@ public class User implements UserDetails {
     @JsonIgnore
     @ToString.Exclude
     private List<LoginHistory> loginHistory = new ArrayList<>();
-
+    @Column(name = "last_active") // New field for last active timestamp
+    private Instant lastActive;
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return Collections.singletonList(new SimpleGrantedAuthority(role.name()));
@@ -85,6 +87,11 @@ public class User implements UserDetails {
     @Override
     public boolean isAccountNonLocked() {
         return true;
+    }
+
+    public User(Long id, String username) {
+        this.id = id;
+        this.username = username;
     }
 
     @Override

@@ -44,7 +44,7 @@ public class Task {
     private Opportunity opportunity;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "assigned_user_id", nullable = false)
+    @JoinColumn(name = "assigned_user_id", nullable = true)
     private User assignedUser;
 
 }

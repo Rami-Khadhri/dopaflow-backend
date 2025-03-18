@@ -18,6 +18,7 @@ import java.util.Map;
 public class UsersController {
 
     private final UserService userService;
+
     @GetMapping("/me")
     public ResponseEntity<User> getCurrentUser(Authentication authentication) {
         User user = userService.findByEmail(authentication.getName()).orElse(null);
@@ -41,9 +42,9 @@ public class UsersController {
         }
     }
     @GetMapping("/all")
-    public ResponseEntity<List<User>> getAllUsers() {
+    public ResponseEntity<List<Map<String, Object>>> getAllUsers() {
         try {
-            List<User> users = userService.getAllUsers();
+            List<Map<String, Object>> users = userService.getAllUsersWithActivity();
             return ResponseEntity.ok(users);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
@@ -56,7 +57,6 @@ public class UsersController {
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
-
     @PostMapping("/create")
     public ResponseEntity<?> createUser(@RequestBody User user) {
         try {
