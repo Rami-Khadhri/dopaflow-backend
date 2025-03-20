@@ -85,7 +85,7 @@ public class TaskService {
         User currentUser = getCurrentUser();
         Task task = taskRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Task not found with id: " + id));
-        if (!hasAdminPrivileges(currentUser) || !task.getAssignedUser().getId().equals(currentUser.getId())) {
+        if (!hasAdminPrivileges(currentUser) && !task.getAssignedUser().getId().equals(currentUser.getId())) {
             throw new SecurityException("You can only update the status of your own tasks");
         }
         task.setStatutTask(newStatus);
@@ -174,7 +174,7 @@ public class TaskService {
                 .orElseThrow(() -> new RuntimeException("Opportunity not found with id: " + opportunityId));
         User assignedUser = userRepository.findById(assignedUserId)
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + assignedUserId));
-        if (!hasAdminPrivileges(currentUser)) {
+        if (!hasAdminPrivileges(currentUser) && !assignedUser.getId().equals(currentUser.getId()) ||!assignedUser.getId().equals(currentUser.getId()) ) {
             throw new RuntimeException("You don't have the required privileges to create a task");
         }
         task.setOpportunity(opportunity);

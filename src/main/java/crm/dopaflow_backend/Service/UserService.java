@@ -185,6 +185,9 @@ public class UserService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        if(user.getRole().equals(Role.SuperAdmin)){
+            throw new RuntimeException("you can't delete SuperAdmins");
+        }
         // 1. Set owner to null for all contacts associated with this user
         contactService.unassignContactsFromUser(id);
         taskService.unassignTasksFromUser(id);
@@ -364,6 +367,7 @@ public class UserService {
                     userMap.put("birthdate", user.getBirthdate() != null ? user.getBirthdate().getTime() : null); // Convert Date to milliseconds
                     userMap.put("status", user.getStatus() != null ? user.getStatus().name() : null); // Assuming StatutUser is an enum
                     userMap.put("verified", user.getVerified());
+                    userMap.put("lastLogin", user.getLastLogin());
                     userMap.put("profilePhotoUrl", user.getProfilePhotoUrl());
                     userMap.putAll(getUserActivity(user.getId()));
                 } catch (Exception e) {

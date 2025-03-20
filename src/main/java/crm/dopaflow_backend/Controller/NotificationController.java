@@ -41,6 +41,7 @@ public class NotificationController {
                 map.put("type", notification.getType().name());
                 map.put("timestamp", notification.getTimestamp());
                 map.put("isRead", notification.isRead());
+                map.put("link", notification.getLink());
                 return map;
             }).collect(Collectors.toList());
 
@@ -69,6 +70,7 @@ public class NotificationController {
                 map.put("type", notification.getType().name());
                 map.put("timestamp", notification.getTimestamp());
                 map.put("isRead", notification.isRead());
+                map.put("link", notification.getLink());
                 return map;
             }).collect(Collectors.toList());
 

@@ -6,6 +6,8 @@ import crm.dopaflow_backend.Security.JwtUtil;
 import crm.dopaflow_backend.Service.NotificationService;
 import crm.dopaflow_backend.Service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,7 +29,7 @@ public class ProfileController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
     private final NotificationService notificationService;
-
+    private static final Logger logger = LoggerFactory.getLogger(ProfileController.class);
     @GetMapping("/profile")
     public ResponseEntity<?> getProfile(@RequestHeader("Authorization") String authHeader) {
         try {
@@ -99,45 +101,61 @@ public class ProfileController {
     }
 
     @PutMapping("/profile/update")
-    public ResponseEntity<?> updateProfile(
+    public ResponseEntity<Map<String, String>> updateProfile(
             @RequestHeader("Authorization") String authHeader,
             @RequestBody Map<String, Object> payload) {
         try {
+            logger.info("Received profile update request with payload: {}", payload);
+
+            // Extract email from JWT token
             String email = jwtUtil.getEmailFromToken(authHeader);
-            User user = userService.findByEmail(email)
-                    .orElseThrow(() -> new IllegalArgumentException("User not found for email: " + email));
+            logger.debug("Extracted email from token: {}", email);
 
             // Extract fields from payload
             String username = (String) payload.get("username");
             Boolean twoFactorEnabled = (Boolean) payload.get("twoFactorEnabled");
-            String birthdateStr = (String) payload.get("birthdate"); // Expecting YYYY-MM-DD format from frontend
+            String birthdateStr = (String) payload.get("birthdate"); // Expecting YYYY-MM-DD
 
             // Parse birthdate if provided
             Date birthdate = null;
-            if (birthdateStr != null && !birthdateStr.isEmpty()) {
+            if (birthdateStr != null && !birthdateStr.trim().isEmpty()) {
                 try {
                     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+                    dateFormat.setLenient(false); // Strict parsing to catch invalid dates
                     birthdate = dateFormat.parse(birthdateStr);
                 } catch (ParseException e) {
-                    return new ResponseEntity<>(Map.of("error", "Invalid birthdate format. Use YYYY-MM-DD."), HttpStatus.BAD_REQUEST);
+                    logger.warn("Invalid birthdate format: {}", birthdateStr);
+                    return ResponseEntity.badRequest()
+                            .body(Map.of("message", "Invalid birthdate format. Use YYYY-MM-DD."));
                 }
             }
 
-            // Update user with all applicable fields
+            // Validate username (optional)
+            if (username != null && username.trim().isEmpty()) {
+                username = null; // Treat empty string as null to avoid saving ""
+            }
+
+            // Update user profile
             User updatedUser = userService.updateProfile(
-                    user.getEmail(),
-                    username != null && !username.isEmpty() ? username : null,
-                    null, // Password not updated here
-                    null,
-                    birthdate, // Use the parsed birthdate from payload, not user.getBirthdate()
-                    twoFactorEnabled
+                    email,
+                    username, // Null if not provided or empty
+                    null,     // currentPassword - not updated here
+                    null,     // newPassword - not updated here
+                    birthdate,
+                    twoFactorEnabled // Pass through, but expect potential exception
             );
 
-            return new ResponseEntity<>(Map.of("message", "Profile updated successfully"), HttpStatus.OK);
+            logger.info("Profile updated successfully for email: {}", email);
+            return ResponseEntity.ok(Map.of("message", "Profile updated successfully"));
+
         } catch (IllegalArgumentException e) {
-            return new ResponseEntity<>(Map.of("error", e.getMessage()), HttpStatus.BAD_REQUEST);
+            logger.warn("Bad request: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
-            return new ResponseEntity<>(Map.of("error", "An unexpected error occurred: " + e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+            logger.error("Unexpected error during profile update", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "An unexpected error occurred: " + e.getMessage()));
         }
     }
 
@@ -164,7 +182,7 @@ public class ProfileController {
             notificationService.createNotification(
                                 user,
                     "Your password has been successfully changed.",
-                    null,
+                    "/profile/security",
                     Notification.NotificationType.PASSWORD_CHANGE
                         );
             return new ResponseEntity<>(Map.of("message", "Password changed successfully"), HttpStatus.OK);
