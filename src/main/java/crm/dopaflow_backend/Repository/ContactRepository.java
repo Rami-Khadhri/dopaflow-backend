@@ -70,4 +70,6 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
         Page<Contact> findByStatusAndOwnerIsNullAndCompanyIdAndCreatedAtBetween(String filteredStatus, Long companyId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
 
         Page<Contact> findByStatusAndOwnerIdAndCompanyIdAndCreatedAtBetween(String filteredStatus, Long ownerId, Long companyId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
+
+        List<Contact> findByEmailIn(List<String> emails);
 }

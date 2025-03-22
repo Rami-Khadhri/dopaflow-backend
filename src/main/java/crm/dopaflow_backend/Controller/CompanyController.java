@@ -2,6 +2,7 @@ package crm.dopaflow_backend.Controller;
 
 import crm.dopaflow_backend.Model.Company;
 import crm.dopaflow_backend.Service.CompanyService;
+import crm.dopaflow_backend.Service.ImportResult;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -110,12 +111,16 @@ public class CompanyController {
         companyService.deleteCompany(id);
         return ResponseEntity.ok().build();
     }
-
     @PostMapping("/import")
-    public ResponseEntity<Map<String, Object>> importCompanies(@RequestParam("file") MultipartFile file,
-                                                               @RequestParam("type") String fileType) {
+    public ResponseEntity<Map<String, Object>> importCompanies(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("type") String fileType,
+            @RequestParam(value = "updateExisting", defaultValue = "false") boolean updateExisting) {
         Map<String, Object> response = new HashMap<>();
         try {
+            if (file.isEmpty()) {
+                throw new IllegalArgumentException("No file uploaded.");
+            }
             List<Company> companies;
             if ("csv".equalsIgnoreCase(fileType)) {
                 companies = parseCsv(file);
@@ -124,12 +129,13 @@ public class CompanyController {
             } else {
                 throw new IllegalArgumentException("Invalid file type. Use 'csv' or 'excel'.");
             }
-            List<Company> savedCompanies = companyService.bulkCreateCompanies(companies);
-            response.put("message", "Imported " + savedCompanies.size() + " companies from " + companies.size() + " parsed rows");
+            ImportResult<Company> importResult = companyService.bulkImportCompanies(companies, updateExisting);
+            response.put("message", String.format("Imported companies: %d created, %d updated, %d skipped out of %d parsed rows",
+                    importResult.getCreated(), importResult.getUpdated(), importResult.getSkipped(), companies.size()));
             response.put("unmappedFields", getUnmappedFields());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            response.put("error", "Import processed with issues: " + e.getMessage());
+            response.put("error", "Import failed: " + e.getMessage());
             return ResponseEntity.status(500).body(response);
         } finally {
             unmappedFields.remove();

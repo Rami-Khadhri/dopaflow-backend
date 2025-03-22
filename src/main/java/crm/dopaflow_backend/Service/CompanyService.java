@@ -15,7 +15,10 @@ import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -107,42 +110,92 @@ public class CompanyService {
                 .orElseThrow(() -> new RuntimeException("Company not found"));
         companyRepository.delete(company);
     }
+    public ImportResult<Company> bulkImportCompanies(List<Company> importedCompanies, boolean updateExisting) {
+        ImportResult<Company> result = new ImportResult<>();
+        List<Company> companiesToSave = new ArrayList<>();
+        int created = 0;
+        int updated = 0;
+        int skipped = 0;
 
-    public List<Company> bulkCreateCompanies(List<Company> companies) {
-        return companyRepository.saveAll(companies.stream().map(company -> {
-            if (company.getName() == null || company.getName().trim().isEmpty()) {
-                company.setName("Unknown");
-            }
-            if (company.getEmail() == null || company.getEmail().trim().isEmpty()) {
-                company.setEmail("unknown@example.com");
-            }
-            if (company.getPhone() == null || company.getPhone().trim().isEmpty()) {
-                company.setPhone("N/A");
-            }
-            if (company.getStatus() == null || company.getStatus().trim().isEmpty()) {
-                company.setStatus("Active");
-            }
-            if (company.getAddress() == null || company.getAddress().trim().isEmpty()) {
-                company.setAddress("N/A");
-            }
-            if (company.getWebsite() == null || company.getWebsite().trim().isEmpty()) {
-                company.setWebsite("N/A");
-            }
-            if (company.getIndustry() == null || company.getIndustry().trim().isEmpty()) {
-                company.setIndustry("N/A");
-            }
-            if (company.getNotes() == null || company.getNotes().trim().isEmpty()) {
-                company.setNotes(null);
+        // Extract owner usernames
+        Set<String> ownerUsernames = importedCompanies.stream()
+                .map(Company::getOwnerUsername)
+                .filter(username -> username != null && !username.trim().isEmpty())
+                .collect(Collectors.toSet());
+
+        // Fetch existing users
+        List<User> existingUsers = userRepository.findByUsernameIn(new ArrayList<>(ownerUsernames));
+        Map<String, User> userMap = existingUsers.stream()
+                .collect(Collectors.toMap(User::getUsername, u -> u, (u1, u2) -> u1));
+
+        // Extract company names to check for duplicates
+        List<String> companyNames = importedCompanies.stream()
+                .map(Company::getName)
+                .filter(name -> name != null && !name.trim().isEmpty())
+                .collect(Collectors.toList());
+
+        // Fetch existing companies
+        List<Company> existingCompanies = companyRepository.findByNameIn(companyNames);
+        Map<String, Company> existingCompanyMap = existingCompanies.stream()
+                .collect(Collectors.toMap(Company::getName, c -> c, (c1, c2) -> c1));
+
+        for (Company imported : importedCompanies) {
+            String name = imported.getName();
+            if (name == null || name.trim().isEmpty()) {
+                skipped++; // Skip companies without name
+                continue;
             }
 
-            if (company.getOwnerUsername() != null && !company.getOwnerUsername().trim().isEmpty()) {
-                User owner = userRepository.findByUsername(company.getOwnerUsername()).orElse(null);
-                company.setOwner(owner);
+            Company company;
+            if (existingCompanyMap.containsKey(name)) {
+                if (updateExisting) {
+                    company = existingCompanyMap.get(name);
+                    // Update non-null fields only
+                    if (imported.getEmail() != null) company.setEmail(imported.getEmail());
+                    if (imported.getPhone() != null) company.setPhone(imported.getPhone());
+                    if (imported.getStatus() != null) company.setStatus(imported.getStatus());
+                    if (imported.getAddress() != null) company.setAddress(imported.getAddress());
+                    if (imported.getWebsite() != null) company.setWebsite(imported.getWebsite());
+                    if (imported.getIndustry() != null) company.setIndustry(imported.getIndustry());
+                    if (imported.getNotes() != null) company.setNotes(imported.getNotes());
+                    if (imported.getPhotoUrl() != null) company.setPhotoUrl(imported.getPhotoUrl());
+                    // Update owner if provided
+                    if (imported.getOwnerUsername() != null && !imported.getOwnerUsername().trim().isEmpty()) {
+                        company.setOwner(userMap.get(imported.getOwnerUsername()));
+                    }
+                    updated++;
+                } else {
+                    skipped++; // Skip duplicates if not updating
+                    continue;
+                }
+            } else {
+                company = new Company();
+                company.setName(name);
+                company.setEmail(imported.getEmail() != null ? imported.getEmail() : "unknown@dopaflow.com");
+                company.setPhone(imported.getPhone() != null ? imported.getPhone() : "N/A");
+                company.setStatus(imported.getStatus() != null ? imported.getStatus() : "Active");
+                company.setAddress(imported.getAddress() != null ? imported.getAddress() : "N/A");
+                company.setWebsite(imported.getWebsite() != null ? imported.getWebsite() : "N/A");
+                company.setIndustry(imported.getIndustry() != null ? imported.getIndustry() : "N/A");
+                company.setNotes(imported.getNotes());
+                company.setPhotoUrl(imported.getPhotoUrl());
+                // Set owner if provided
+                if (imported.getOwnerUsername() != null && !imported.getOwnerUsername().trim().isEmpty()) {
+                    company.setOwner(userMap.get(imported.getOwnerUsername()));
+                }
+                created++;
             }
-            company.setOwnerUsername(null);
+            companiesToSave.add(company);
+        }
 
-            return company;
-        }).collect(Collectors.toList()));
+        if (!companiesToSave.isEmpty()) {
+            companyRepository.saveAll(companiesToSave);
+        }
+        result.setSavedEntities(companiesToSave);
+        result.setCreated(created);
+        result.setUpdated(updated);
+        result.setSkipped(skipped);
+        return result;
     }
 
     public byte[] exportCompaniesToCsv(List<String> selectedColumns) {

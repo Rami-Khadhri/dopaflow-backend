@@ -10,6 +10,7 @@ import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
     // For login/email verification
+
     Optional<User> findByEmail(String email);
     User findUserByEmail(String email);
     @Query("SELECT u FROM User u WHERE LOWER(u.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
@@ -21,5 +22,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByUsername(@Param("username") String username);
     // For email verification token
     Optional<User> findByVerificationToken(String verificationToken);
+    List<User> findByUsernameIn(List<String> usernames);
 
 }

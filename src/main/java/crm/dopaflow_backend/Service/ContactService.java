@@ -23,7 +23,7 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -264,54 +264,159 @@ public class ContactService {
         }
     }
 
-    public List<Contact> bulkCreateContacts(List<Contact> contacts) {
-        return contactRepository.saveAll(contacts.stream().map(contact -> {
-            if (contact.getName() == null || contact.getName().trim().isEmpty()) {
-                contact.setName("Unknown");
+    public ImportResult<Contact> bulkImportContacts(List<Contact> importedContacts, boolean updateExisting) {
+        ImportResult<Contact> result = new ImportResult<>();
+        List<Contact> contactsToSave = new ArrayList<>();
+        int created = 0;
+        int updated = 0;
+        int skipped = 0;
+
+        // Extract company names for mapping
+        Set<String> companyNames = importedContacts.stream()
+                .map(Contact::getCompany)
+                .filter(Objects::nonNull)
+                .map(Company::getName)
+                .filter(name -> name != null && !name.trim().isEmpty())
+                .collect(Collectors.toSet());
+
+        // Fetch existing companies by name
+        List<Company> existingCompanies = companyRepository.findByNameIn(new ArrayList<>(companyNames));
+        Map<String, Company> companyMap = existingCompanies.stream()
+                .collect(Collectors.toMap(Company::getName, c -> c, (c1, c2) -> c1)); // Keep first if duplicates
+
+        // Handle company owners
+        Set<String> companyOwnerUsernames = importedContacts.stream()
+                .map(Contact::getCompany)
+                .filter(Objects::nonNull)
+                .map(Company::getOwnerUsername)
+                .filter(username -> username != null && !username.trim().isEmpty())
+                .collect(Collectors.toSet());
+        List<User> companyOwners = userRepository.findByUsernameIn(new ArrayList<>(companyOwnerUsernames));
+        Map<String, User> companyOwnerMap = companyOwners.stream()
+                .collect(Collectors.toMap(User::getUsername, u -> u, (u1, u2) -> u1));
+
+        // Create new companies if they don't exist, using provided values or defaults
+        List<Company> newCompanies = importedContacts.stream()
+                .map(Contact::getCompany)
+                .filter(Objects::nonNull)
+                .filter(company -> company.getName() != null && !company.getName().trim().isEmpty())
+                .filter(company -> !companyMap.containsKey(company.getName()))
+                .map(company -> {
+                    Company newCompany = new Company();
+                    newCompany.setName(company.getName());
+                    newCompany.setEmail(company.getEmail() != null && !company.getEmail().trim().isEmpty() ?
+                            company.getEmail() : "unknown_" + UUID.randomUUID().toString().substring(0, 8) + "@example.com");
+                    newCompany.setPhone(company.getPhone() != null && !company.getPhone().trim().isEmpty() ?
+                            company.getPhone() : "N/A");
+                    newCompany.setStatus(company.getStatus() != null && !company.getStatus().trim().isEmpty() ?
+                            company.getStatus() : "Active");
+                    newCompany.setAddress(company.getAddress() != null && !company.getAddress().trim().isEmpty() ?
+                            company.getAddress() : "N/A");
+                    newCompany.setWebsite(company.getWebsite() != null && !company.getWebsite().trim().isEmpty() ?
+                            company.getWebsite() : "N/A");
+                    newCompany.setIndustry(company.getIndustry() != null && !company.getIndustry().trim().isEmpty() ?
+                            company.getIndustry() : "Unknown");
+                    newCompany.setNotes(company.getNotes());
+                    if (company.getOwnerUsername() != null && !company.getOwnerUsername().trim().isEmpty() &&
+                            companyOwnerMap.containsKey(company.getOwnerUsername())) {
+                        newCompany.setOwner(companyOwnerMap.get(company.getOwnerUsername()));
+                    }
+                    newCompany.setOwnerUsername(company.getOwnerUsername());
+                    newCompany.setPhotoUrl(company.getPhotoUrl());
+                    return newCompany;
+                })
+                .distinct() // Avoid creating duplicates for the same company name
+                .collect(Collectors.toList());
+
+        if (!newCompanies.isEmpty()) {
+            companyRepository.saveAll(newCompanies);
+            newCompanies.forEach(company -> companyMap.put(company.getName(), company));
+        }
+
+        // Extract contact owner usernames
+        Set<String> ownerUsernames = importedContacts.stream()
+                .map(Contact::getOwnerUsername)
+                .filter(username -> username != null && !username.trim().isEmpty())
+                .collect(Collectors.toSet());
+
+        // Fetch existing users
+        List<User> existingUsers = userRepository.findByUsernameIn(new ArrayList<>(ownerUsernames));
+        Map<String, User> userMap = existingUsers.stream()
+                .collect(Collectors.toMap(User::getUsername, u -> u, (u1, u2) -> u1));
+
+        // Extract emails to check for duplicates
+        List<String> emails = importedContacts.stream()
+                .map(Contact::getEmail)
+                .filter(email -> email != null && !email.trim().isEmpty())
+                .collect(Collectors.toList());
+
+        // Fetch existing contacts
+        List<Contact> existingContacts = contactRepository.findByEmailIn(emails);
+        Map<String, Contact> existingContactMap = existingContacts.stream()
+                .collect(Collectors.toMap(Contact::getEmail, c -> c, (c1, c2) -> c1));
+
+        for (Contact imported : importedContacts) {
+            String email = imported.getEmail();
+            if (email == null || email.trim().isEmpty()) {
+                skipped++; // Skip contacts without email
+                continue;
             }
-            if (contact.getEmail() == null || contact.getEmail().trim().isEmpty()) {
-                contact.setEmail("unknown_" + System.nanoTime() + "@example.com");
-            }
-            if (contact.getPhone() == null || contact.getPhone().trim().isEmpty()) {
-                contact.setPhone(null);
-            }
-            if (contact.getStatus() == null || contact.getStatus().trim().isEmpty()) {
-                contact.setStatus("Open");
-            }
-            if (contact.getCompany() != null) {
-                if (contact.getCompany().getId() != null) {
-                    Company company = companyRepository.findById(contact.getCompany().getId())
-                            .orElseThrow(() -> new RuntimeException("Company not found: " + contact.getCompany().getId()));
-                    contact.setCompany(company);
-                } else if (contact.getCompany().getName() != null && !contact.getCompany().getName().trim().isEmpty()) {
-                    // Use CompanyService to create a valid company
-                    Company company = companyService.createCompany(contact.getCompany());
-                    contact.setCompany(company);
+
+            Contact contact;
+            if (existingContactMap.containsKey(email)) {
+                if (updateExisting) {
+                    contact = existingContactMap.get(email);
+                    // Update non-null fields only
+                    if (imported.getName() != null) contact.setName(imported.getName());
+                    if (imported.getPhone() != null) contact.setPhone(imported.getPhone());
+                    if (imported.getStatus() != null) contact.setStatus(imported.getStatus());
+                    if (imported.getNotes() != null) contact.setNotes(imported.getNotes());
+                    if (imported.getPhotoUrl() != null) contact.setPhotoUrl(imported.getPhotoUrl());
+                    // Update company if provided
+                    if (imported.getCompany() != null && imported.getCompany().getName() != null && !imported.getCompany().getName().trim().isEmpty()) {
+                        contact.setCompany(companyMap.get(imported.getCompany().getName()));
+                    }
+                    // Update owner if provided
+                    if (imported.getOwnerUsername() != null && !imported.getOwnerUsername().trim().isEmpty()) {
+                        contact.setOwner(userMap.get(imported.getOwnerUsername()));
+                    }
+                    contact.setLastActivity(LocalDateTime.now());
+                    updated++;
                 } else {
-                    contact.setCompany(null);
+                    skipped++; // Skip duplicates if not updating
+                    continue;
                 }
             } else {
-                contact.setCompany(null);
+                contact = new Contact();
+                contact.setEmail(email);
+                contact.setName(imported.getName() != null ? imported.getName() : "Unknown");
+                contact.setPhone(imported.getPhone());
+                contact.setStatus(imported.getStatus() != null ? imported.getStatus() : "Open");
+                contact.setNotes(imported.getNotes());
+                contact.setPhotoUrl(imported.getPhotoUrl());
+                // Set company if provided
+                if (imported.getCompany() != null && imported.getCompany().getName() != null && !imported.getCompany().getName().trim().isEmpty()) {
+                    contact.setCompany(companyMap.get(imported.getCompany().getName()));
+                }
+                // Set owner if provided
+                if (imported.getOwnerUsername() != null && !imported.getOwnerUsername().trim().isEmpty()) {
+                    contact.setOwner(userMap.get(imported.getOwnerUsername()));
+                }
+                contact.setCreatedAt(LocalDateTime.now());
+                contact.setLastActivity(LocalDateTime.now());
+                created++;
             }
-            if (contact.getNotes() == null || contact.getNotes().trim().isEmpty()) {
-                contact.setNotes(null);
-            }
+            contactsToSave.add(contact);
+        }
 
-            contact.setCreatedAt(LocalDateTime.now());
-            contact.setLastActivity(LocalDateTime.now());
-
-            if (contact.getOwnerUsername() != null && !contact.getOwnerUsername().trim().isEmpty()) {
-                User owner = userRepository.findByUsername(contact.getOwnerUsername()).orElse(null);
-                contact.setOwner(owner);
-            } else if (contact.getOwner() != null && contact.getOwner().getId() != null) {
-                User owner = userRepository.findById(contact.getOwner().getId())
-                        .orElseThrow(() -> new RuntimeException("Owner not found: " + contact.getOwner().getId()));
-                contact.setOwner(owner);
-            }
-            contact.setOwnerUsername(null);
-
-            return contact;
-        }).collect(Collectors.toList()));
+        if (!contactsToSave.isEmpty()) {
+            contactRepository.saveAll(contactsToSave);
+        }
+        result.setSavedEntities(contactsToSave);
+        result.setCreated(created);
+        result.setUpdated(updated);
+        result.setSkipped(skipped);
+        return result;
     }
 
     public void unassignContactsFromUser(Long userId) {

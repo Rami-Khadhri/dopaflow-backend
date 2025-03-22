@@ -4,6 +4,7 @@ import crm.dopaflow_backend.Model.Company;
 import crm.dopaflow_backend.Model.Contact;
 import crm.dopaflow_backend.Service.ContactService;
 import crm.dopaflow_backend.Service.CompanyService;
+import crm.dopaflow_backend.Service.ImportResult;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -29,7 +30,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class ContactController {
     private final ContactService contactService;
-    private final CompanyService companyService; // Added dependency
+    private final CompanyService companyService;
     private static final String UPLOAD_DIR = "uploads/contact-photos/";
 
     @PostMapping("/{contactId}/uploadPhoto")
@@ -64,7 +65,7 @@ public class ContactController {
             Page<Contact> contactsPage = contactService.getAllContacts(page, size, sort);
             return ResponseEntity.ok(contactsPage != null ? contactsPage : Page.empty());
         } catch (Exception e) {
-            e.printStackTrace(); // Replace with proper logging
+            e.printStackTrace();
             return ResponseEntity.status(500).body(Page.empty());
         }
     }
@@ -142,7 +143,10 @@ public class ContactController {
     }
 
     @PostMapping("/import")
-    public ResponseEntity<Map<String, Object>> importContacts(@RequestParam("file") MultipartFile file, @RequestParam("type") String fileType) {
+    public ResponseEntity<Map<String, Object>> importContacts(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("type") String fileType,
+            @RequestParam(value = "updateExisting", defaultValue = "false") boolean updateExisting) {
         Map<String, Object> response = new HashMap<>();
         try {
             if (file.isEmpty()) {
@@ -156,12 +160,13 @@ public class ContactController {
             } else {
                 throw new IllegalArgumentException("Invalid file type. Use 'csv' or 'excel'.");
             }
-            List<Contact> savedContacts = contactService.bulkCreateContacts(contacts);
-            response.put("message", "Imported " + savedContacts.size() + " contacts from " + contacts.size() + " parsed rows");
+            ImportResult<Contact> importResult = contactService.bulkImportContacts(contacts, updateExisting);
+            response.put("message", String.format("Imported contacts: %d created, %d updated, %d skipped out of %d parsed rows",
+                    importResult.getCreated(), importResult.getUpdated(), importResult.getSkipped(), contacts.size()));
             response.put("unmappedFields", getUnmappedFields());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            response.put("error", "Import processed with issues: " + e.getMessage());
+            response.put("error", "Import failed: " + e.getMessage());
             return ResponseEntity.status(500).body(response);
         } finally {
             unmappedFields.remove();
@@ -189,17 +194,38 @@ public class ContactController {
                     String lowerHeader = header.toLowerCase();
                     if (nameHints.stream().anyMatch(lowerHeader::contains)) {
                         fieldMappings.put(lowerHeader, "name");
-                    } else if (lowerHeader.contains("email")) {
+                    } else if (lowerHeader.contains("email") && !lowerHeader.contains("company")) {
                         fieldMappings.put(lowerHeader, "email");
-                    } else if (lowerHeader.contains("phone") || lowerHeader.contains("mobile")) {
+                    } else if ((lowerHeader.contains("phone") || lowerHeader.contains("mobile")) && !lowerHeader.contains("company")) {
                         fieldMappings.put(lowerHeader, "phone");
-                    } else if (lowerHeader.contains("status")) {
+                    } else if (lowerHeader.contains("status") && !lowerHeader.contains("company")) {
                         fieldMappings.put(lowerHeader, "status");
-                    } else if (lowerHeader.contains("company")) {
+                    } else if (lowerHeader.contains("company") && !lowerHeader.contains("email") && !lowerHeader.contains("phone") &&
+                            !lowerHeader.contains("status") && !lowerHeader.contains("address") && !lowerHeader.contains("website") &&
+                            !lowerHeader.contains("industry") && !lowerHeader.contains("notes") && !lowerHeader.contains("owner") &&
+                            !lowerHeader.contains("photo")) {
                         fieldMappings.put(lowerHeader, "company");
-                    } else if (lowerHeader.contains("notes")) {
+                    } else if (lowerHeader.contains("company email")) {
+                        fieldMappings.put(lowerHeader, "companyEmail");
+                    } else if (lowerHeader.contains("company phone")) {
+                        fieldMappings.put(lowerHeader, "companyPhone");
+                    } else if (lowerHeader.contains("company status")) {
+                        fieldMappings.put(lowerHeader, "companyStatus");
+                    } else if (lowerHeader.contains("company address")) {
+                        fieldMappings.put(lowerHeader, "companyAddress");
+                    } else if (lowerHeader.contains("company website")) {
+                        fieldMappings.put(lowerHeader, "companyWebsite");
+                    } else if (lowerHeader.contains("company industry")) {
+                        fieldMappings.put(lowerHeader, "companyIndustry");
+                    } else if (lowerHeader.contains("company notes")) {
+                        fieldMappings.put(lowerHeader, "companyNotes");
+                    } else if (lowerHeader.contains("company owner")) {
+                        fieldMappings.put(lowerHeader, "companyOwnerUsername");
+                    } else if (lowerHeader.contains("company photo")) {
+                        fieldMappings.put(lowerHeader, "companyPhotoUrl");
+                    } else if (lowerHeader.contains("notes") && !lowerHeader.contains("company")) {
                         fieldMappings.put(lowerHeader, "notes");
-                    } else if (lowerHeader.contains("owner")) {
+                    } else if (lowerHeader.contains("owner") && !lowerHeader.contains("company")) {
                         fieldMappings.put(lowerHeader, "ownerUsername");
                     } else {
                         unmappedFields.add(header);
@@ -210,6 +236,7 @@ public class ContactController {
 
             for (CSVRecord record : csvParser) {
                 Contact contact = new Contact();
+                Company company = null;
                 boolean hasName = false;
 
                 for (String header : csvParser.getHeaderNames()) {
@@ -248,11 +275,54 @@ public class ContactController {
                                 break;
                             case "company":
                                 if (!value.isEmpty()) {
-                                    Company company = new Company();
+                                    company = new Company();
                                     company.setName(value);
-                                    // Delegate to CompanyService to ensure all required fields are set
-                                    company = companyService.createCompany(company);
                                     contact.setCompany(company);
+                                }
+                                break;
+                            case "companyEmail":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setEmail(value);
+                                }
+                                break;
+                            case "companyPhone":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setPhone(value);
+                                }
+                                break;
+                            case "companyStatus":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setStatus(value);
+                                }
+                                break;
+                            case "companyAddress":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setAddress(value);
+                                }
+                                break;
+                            case "companyWebsite":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setWebsite(value);
+                                }
+                                break;
+                            case "companyIndustry":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setIndustry(value);
+                                }
+                                break;
+                            case "companyNotes":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setNotes(value);
+                                }
+                                break;
+                            case "companyOwnerUsername":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setOwnerUsername(value);
+                                }
+                                break;
+                            case "companyPhotoUrl":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setPhotoUrl(value);
                                 }
                                 break;
                             case "notes":
@@ -300,17 +370,38 @@ public class ContactController {
                     String header = cell.getStringCellValue().trim().toLowerCase();
                     if (nameHints.stream().anyMatch(header::contains)) {
                         fieldMappings.put(header, "name");
-                    } else if (header.contains("email")) {
+                    } else if (header.contains("email") && !header.contains("company")) {
                         fieldMappings.put(header, "email");
-                    } else if (header.contains("phone") || header.contains("mobile")) {
+                    } else if ((header.contains("phone") || header.contains("mobile")) && !header.contains("company")) {
                         fieldMappings.put(header, "phone");
-                    } else if (header.contains("status")) {
+                    } else if (header.contains("status") && !header.contains("company")) {
                         fieldMappings.put(header, "status");
-                    } else if (header.contains("company")) {
+                    } else if (header.contains("company") && !header.contains("email") && !header.contains("phone") &&
+                            !header.contains("status") && !header.contains("address") && !header.contains("website") &&
+                            !header.contains("industry") && !header.contains("notes") && !header.contains("owner") &&
+                            !header.contains("photo")) {
                         fieldMappings.put(header, "company");
-                    } else if (header.contains("notes")) {
+                    } else if (header.contains("company email")) {
+                        fieldMappings.put(header, "companyEmail");
+                    } else if (header.contains("company phone")) {
+                        fieldMappings.put(header, "companyPhone");
+                    } else if (header.contains("company status")) {
+                        fieldMappings.put(header, "companyStatus");
+                    } else if (header.contains("company address")) {
+                        fieldMappings.put(header, "companyAddress");
+                    } else if (header.contains("company website")) {
+                        fieldMappings.put(header, "companyWebsite");
+                    } else if (header.contains("company industry")) {
+                        fieldMappings.put(header, "companyIndustry");
+                    } else if (header.contains("company notes")) {
+                        fieldMappings.put(header, "companyNotes");
+                    } else if (header.contains("company owner")) {
+                        fieldMappings.put(header, "companyOwnerUsername");
+                    } else if (header.contains("company photo")) {
+                        fieldMappings.put(header, "companyPhotoUrl");
+                    } else if (header.contains("notes") && !header.contains("company")) {
                         fieldMappings.put(header, "notes");
-                    } else if (header.contains("owner")) {
+                    } else if (header.contains("owner") && !header.contains("company")) {
                         fieldMappings.put(header, "ownerUsername");
                     } else {
                         unmappedFields.add(header);
@@ -323,6 +414,7 @@ public class ContactController {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
                 Contact contact = new Contact();
+                Company company = null;
                 boolean hasName = false;
 
                 for (Cell cell : row) {
@@ -362,11 +454,54 @@ public class ContactController {
                                 break;
                             case "company":
                                 if (!value.isEmpty()) {
-                                    Company company = new Company();
+                                    company = new Company();
                                     company.setName(value);
-                                    // Delegate to CompanyService to ensure all required fields are set
-                                    company = companyService.createCompany(company);
                                     contact.setCompany(company);
+                                }
+                                break;
+                            case "companyEmail":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setEmail(value);
+                                }
+                                break;
+                            case "companyPhone":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setPhone(value);
+                                }
+                                break;
+                            case "companyStatus":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setStatus(value);
+                                }
+                                break;
+                            case "companyAddress":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setAddress(value);
+                                }
+                                break;
+                            case "companyWebsite":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setWebsite(value);
+                                }
+                                break;
+                            case "companyIndustry":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setIndustry(value);
+                                }
+                                break;
+                            case "companyNotes":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setNotes(value);
+                                }
+                                break;
+                            case "companyOwnerUsername":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setOwnerUsername(value);
+                                }
+                                break;
+                            case "companyPhotoUrl":
+                                if (!value.isEmpty() && company != null) {
+                                    company.setPhotoUrl(value);
                                 }
                                 break;
                             case "notes":
