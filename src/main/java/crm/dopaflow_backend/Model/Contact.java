@@ -39,7 +39,9 @@ public class Contact {
     @JoinColumn(name = "owner_id")
     private User owner;
 
-    private String company;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "company_id")
+    private Company company;
 
     @Column(columnDefinition = "TEXT")
     private String notes;
@@ -55,9 +57,12 @@ public class Contact {
     @OneToMany(mappedBy = "contact", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "contact"})
     private List<Opportunity> opportunities = new ArrayList<>();
+
+
     @PrePersist
     protected void onPrePersist() {
         if (createdAt == null) createdAt = LocalDateTime.now();
         if (lastActivity == null) lastActivity = LocalDateTime.now();
     }
+
 }

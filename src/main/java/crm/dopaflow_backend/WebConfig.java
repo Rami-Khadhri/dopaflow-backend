@@ -26,12 +26,6 @@ public class WebConfig {
                         .allowCredentials(true);
             }
 
-            @Override
-            public void addResourceHandlers(ResourceHandlerRegistry registry) {
-                registry.addResourceHandler("/chatuploads/**")
-                        .addResourceLocations("file:chatuploads/")
-                        .setCachePeriod(0);
-            }
         };
     }
 

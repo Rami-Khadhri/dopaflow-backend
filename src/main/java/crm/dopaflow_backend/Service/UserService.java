@@ -204,7 +204,9 @@ public class UserService {
 
         userRepository.delete(user);
     }
-
+    public List<User> searchUsers(String searchTerm) {
+        return userRepository.findByEmailOrUsernameContainingIgnoreCase(searchTerm);
+    }
     public void changeUserPassword(String email, String currentPassword, String newPassword) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));

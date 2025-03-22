@@ -59,6 +59,11 @@ public class Notification {
         USER_CREATED,
         USER_DELETED,
         CONTACT_CREATED,
-        TASK_ASSIGNED
+        TASK_ASSIGNED,
+        MESSAGE_RECEIVED,
+        TICKET_OPENED,
+        TICKET_CLOSED,
+        TICKET_STATUS_CHANGED
+
     }
 }

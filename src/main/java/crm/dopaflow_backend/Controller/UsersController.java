@@ -1,5 +1,6 @@
 package crm.dopaflow_backend.Controller;
 
+import crm.dopaflow_backend.DTO.UserDTO;
 import crm.dopaflow_backend.Model.StatutUser;
 import crm.dopaflow_backend.Model.User;
 import crm.dopaflow_backend.Service.UserService;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/users")
@@ -18,7 +20,21 @@ import java.util.Map;
 public class UsersController {
 
     private final UserService userService;
+    @GetMapping("/search")
+    public ResponseEntity<List<UserDTO>> searchUsers(@RequestParam("search") String searchTerm) {
+        List<User> users = userService.searchUsers(searchTerm);
+        List<UserDTO> userDTOs = users.stream().map(this::mapToDTO).collect(Collectors.toList());
+        return ResponseEntity.ok(userDTOs);
+    }
 
+    private UserDTO mapToDTO(User user) {
+        UserDTO dto = new UserDTO();
+        dto.setId(user.getId());
+        dto.setEmail(user.getEmail());
+        dto.setUsername(user.getUsername());
+        dto.setProfilePhotoUrl(user.getProfilePhotoUrl());
+        return dto;
+    }
     @GetMapping("/me")
     public ResponseEntity<User> getCurrentUser(Authentication authentication) {
         User user = userService.findByEmail(authentication.getName()).orElse(null);

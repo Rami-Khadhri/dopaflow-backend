@@ -1,7 +1,9 @@
 package crm.dopaflow_backend.Service;
 
+import crm.dopaflow_backend.Model.Company;
 import crm.dopaflow_backend.Model.Contact;
 import crm.dopaflow_backend.Model.User;
+import crm.dopaflow_backend.Repository.CompanyRepository;
 import crm.dopaflow_backend.Repository.ContactRepository;
 import crm.dopaflow_backend.Repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,8 @@ public class ContactService {
 
     private final ContactRepository contactRepository;
     private final UserRepository userRepository;
+    private final CompanyRepository companyRepository;
+    private final CompanyService companyService;
 
     private Sort parseSort(String sort) {
         String[] parts = sort.split(",");
@@ -61,34 +65,49 @@ public class ContactService {
         return contactRepository.findByNameContainingIgnoreCase(query, pageable);
     }
 
-    public Page<Contact> filterContacts(String status, String startDateStr, String endDateStr, Long ownerId, boolean unassignedOnly, int page, int size, String sort) {
+    public Page<Contact> filterContacts(String status, String startDateStr, String endDateStr, Long ownerId, boolean unassignedOnly, Long companyId, int page, int size, String sort) {
         Pageable pageable = PageRequest.of(page, size, parseSort(sort));
         LocalDateTime startDate = parseDate(startDateStr, true);
         LocalDateTime endDate = parseDate(endDateStr, false);
-        String filteredStatus = (status != null && !status.trim().isEmpty()) ? status : "ANY"; // Use "ANY" instead of null
+        String filteredStatus = (status != null && !status.trim().isEmpty()) ? status : "ANY";
 
         System.out.println("Filtering contacts: status=" + filteredStatus + ", startDate=" + startDate + ", endDate=" + endDate +
-                ", ownerId=" + ownerId + ", unassignedOnly=" + unassignedOnly + ", page=" + page + ", size=" + size + ", sort=" + sort);
+                ", ownerId=" + ownerId + ", unassignedOnly=" + unassignedOnly + ", companyId=" + companyId + ", page=" + page + ", size=" + size + ", sort=" + sort);
 
         Page<Contact> result;
         if ("ANY".equals(filteredStatus)) {
-            // If status is "ANY", ignore status filter and fetch based on other conditions
             if (unassignedOnly) {
-                System.out.println("Unassigned with any status");
-                result = contactRepository.findByOwnerIsNullAndCreatedAtBetween(startDate, endDate, pageable);
+                if (companyId != null) {
+                    result = contactRepository.findByOwnerIsNullAndCompanyIdAndCreatedAtBetween(companyId, startDate, endDate, pageable);
+                } else {
+                    result = contactRepository.findByOwnerIsNullAndCreatedAtBetween(startDate, endDate, pageable);
+                }
             } else if (ownerId != null) {
-                System.out.println("Specific owner with any status");
-                result = contactRepository.findByOwnerIdAndCreatedAtBetween(ownerId, startDate, endDate, pageable);
+                if (companyId != null) {
+                    result = contactRepository.findByOwnerIdAndCompanyIdAndCreatedAtBetween(ownerId, companyId, startDate, endDate, pageable);
+                } else {
+                    result = contactRepository.findByOwnerIdAndCreatedAtBetween(ownerId, startDate, endDate, pageable);
+                }
+            } else if (companyId != null) {
+                result = contactRepository.findByCompanyIdAndCreatedAtBetween(companyId, startDate, endDate, pageable);
             } else {
-                System.out.println("No specific status or owner, fetching all contacts within date range");
                 result = contactRepository.findByCreatedAtBetween(startDate, endDate, pageable);
             }
         } else {
-            // Specific status filter
             if (unassignedOnly) {
-                result = contactRepository.findByStatusAndOwnerIsNullAndCreatedAtBetween(filteredStatus, startDate, endDate, pageable);
+                if (companyId != null) {
+                    result = contactRepository.findByStatusAndOwnerIsNullAndCompanyIdAndCreatedAtBetween(filteredStatus, companyId, startDate, endDate, pageable);
+                } else {
+                    result = contactRepository.findByStatusAndOwnerIsNullAndCreatedAtBetween(filteredStatus, startDate, endDate, pageable);
+                }
             } else if (ownerId != null) {
-                result = contactRepository.findByStatusAndOwnerIdAndCreatedAtBetween(filteredStatus, ownerId, startDate, endDate, pageable);
+                if (companyId != null) {
+                    result = contactRepository.findByStatusAndOwnerIdAndCompanyIdAndCreatedAtBetween(filteredStatus, ownerId, companyId, startDate, endDate, pageable);
+                } else {
+                    result = contactRepository.findByStatusAndOwnerIdAndCreatedAtBetween(filteredStatus, ownerId, startDate, endDate, pageable);
+                }
+            } else if (companyId != null) {
+                result = contactRepository.findByStatusAndCompanyIdAndCreatedAtBetween(filteredStatus, companyId, startDate, endDate, pageable);
             } else {
                 result = contactRepository.findByStatusAndCreatedAtBetween(filteredStatus, startDate, endDate, pageable);
             }
@@ -109,6 +128,18 @@ public class ContactService {
                     .orElseThrow(() -> new RuntimeException("Owner not found"));
             contact.setOwner(owner);
         }
+        if (contact.getCompany() != null) {
+            if (contact.getCompany().getId() != null) {
+                Company company = companyRepository.findById(contact.getCompany().getId())
+                        .orElseThrow(() -> new RuntimeException("Company not found"));
+                contact.setCompany(company);
+            } else if (contact.getCompany().getName() != null && !contact.getCompany().getName().trim().isEmpty()) {
+                Company company = companyService.createCompany(contact.getCompany());
+                contact.setCompany(company);
+            } else {
+                contact.setCompany(null);
+            }
+        }
         contact.setCreatedAt(LocalDateTime.now());
         contact.setLastActivity(LocalDateTime.now());
         return contactRepository.save(contact);
@@ -122,7 +153,6 @@ public class ContactService {
         existingContact.setEmail(contactDetails.getEmail());
         existingContact.setPhone(contactDetails.getPhone());
         existingContact.setStatus(contactDetails.getStatus());
-        existingContact.setCompany(contactDetails.getCompany());
         existingContact.setNotes(contactDetails.getNotes());
         existingContact.setPhotoUrl(contactDetails.getPhotoUrl());
         existingContact.setLastActivity(LocalDateTime.now());
@@ -135,6 +165,21 @@ public class ContactService {
             existingContact.setOwner(null);
         }
 
+        if (contactDetails.getCompany() != null) {
+            if (contactDetails.getCompany().getId() != null) {
+                Company company = companyRepository.findById(contactDetails.getCompany().getId())
+                        .orElseThrow(() -> new RuntimeException("Company not found"));
+                existingContact.setCompany(company);
+            } else if (contactDetails.getCompany().getName() != null && !contactDetails.getCompany().getName().trim().isEmpty()) {
+                Company company = companyService.createCompany(contactDetails.getCompany());
+                existingContact.setCompany(company);
+            } else {
+                existingContact.setCompany(null);
+            }
+        } else {
+            existingContact.setCompany(null);
+        }
+
         return contactRepository.save(existingContact);
     }
 
@@ -144,25 +189,42 @@ public class ContactService {
         contactRepository.delete(contact);
     }
 
-    public byte[] exportContactsToCsv(List<String> columns) {
-        StringBuilder csv = new StringBuilder();
-        csv.append(String.join(",", columns)).append("\n");
+    public byte[] exportContactsToCsv(List<String> selectedColumns) {
         List<Contact> contacts = contactRepository.findAll();
+        StringBuilder csv = new StringBuilder();
+
+        String header = selectedColumns.stream()
+                .map(col -> switch (col) {
+                    case "name" -> "Name";
+                    case "email" -> "Email";
+                    case "phone" -> "Phone Number";
+                    case "status" -> "Lead Status";
+                    case "createdAt" -> "Creation Date";
+                    case "owner" -> "Contact Owner";
+                    case "company" -> "Company";
+                    case "notes" -> "Notes";
+                    case "photoUrl" -> "Photo URL";
+                    default -> "";
+                })
+                .collect(Collectors.joining(","));
+        csv.append(header).append("\n");
+
         for (Contact contact : contacts) {
-            List<String> values = columns.stream().map(col -> {
-                switch (col.toLowerCase()) {
-                    case "name": return contact.getName() != null ? "\"" + contact.getName() + "\"" : "";
-                    case "email": return contact.getEmail() != null ? contact.getEmail() : "";
-                    case "phone": return contact.getPhone() != null ? contact.getPhone() : "";
-                    case "status": return contact.getStatus() != null ? contact.getStatus() : "N/A";
-                    case "company": return contact.getCompany() != null ? "\"" + contact.getCompany() + "\"" : "";
-                    case "notes": return contact.getNotes() != null ? "\"" + contact.getNotes() + "\"" : "";
-                    case "owner": return contact.getOwner() != null ? contact.getOwner().getUsername() : "";
-                    case "createdat": return contact.getCreatedAt() != null ? contact.getCreatedAt().toString() : "";
-                    default: return "";
-                }
-            }).collect(Collectors.toList());
-            csv.append(String.join(",", values)).append("\n");
+            String row = selectedColumns.stream()
+                    .map(col -> switch (col) {
+                        case "name" -> escapeCsv(contact.getName());
+                        case "email" -> escapeCsv(contact.getEmail());
+                        case "phone" -> escapeCsv(contact.getPhone());
+                        case "status" -> escapeCsv(contact.getStatus());
+                        case "createdAt" -> contact.getCreatedAt() != null ? escapeCsv(contact.getCreatedAt().toString()) : "";
+                        case "owner" -> contact.getOwner() != null ? escapeCsv(contact.getOwner().getUsername()) : "";
+                        case "company" -> contact.getCompany() != null ? escapeCsv(contact.getCompany().getName()) : "";
+                        case "notes" -> escapeCsv(contact.getNotes());
+                        case "photoUrl" -> escapeCsv(contact.getPhotoUrl());
+                        default -> "";
+                    })
+                    .collect(Collectors.joining(","));
+            csv.append(row).append("\n");
         }
         return csv.toString().getBytes();
     }
@@ -172,13 +234,11 @@ public class ContactService {
             Sheet sheet = workbook.createSheet("Contacts");
             List<Contact> contacts = contactRepository.findAll();
 
-            // Header row
             Row headerRow = sheet.createRow(0);
             for (int i = 0; i < columns.size(); i++) {
                 headerRow.createCell(i).setCellValue(columns.get(i));
             }
 
-            // Data rows
             int rowNum = 1;
             for (Contact contact : contacts) {
                 Row row = sheet.createRow(rowNum++);
@@ -189,8 +249,8 @@ public class ContactService {
                         case "name": cell.setCellValue(contact.getName()); break;
                         case "email": cell.setCellValue(contact.getEmail()); break;
                         case "phone": cell.setCellValue(contact.getPhone()); break;
-                        case "status": cell.setCellValue(contact.getStatus() != null ? contact.getStatus() : "N/A"); break;
-                        case "company": cell.setCellValue(contact.getCompany()); break;
+                        case "status": cell.setCellValue(contact.getStatus() != null ? contact.getStatus() : "Open"); break;
+                        case "company": cell.setCellValue(contact.getCompany() != null ? contact.getCompany().getName() : ""); break;
                         case "notes": cell.setCellValue(contact.getNotes()); break;
                         case "owner": cell.setCellValue(contact.getOwner() != null ? contact.getOwner().getUsername() : ""); break;
                         case "createdat": cell.setCellValue(contact.getCreatedAt() != null ? contact.getCreatedAt().toString() : ""); break;
@@ -203,56 +263,71 @@ public class ContactService {
             return baos.toByteArray();
         }
     }
+
     public List<Contact> bulkCreateContacts(List<Contact> contacts) {
         return contactRepository.saveAll(contacts.stream().map(contact -> {
-            // Set default values if null/empty
             if (contact.getName() == null || contact.getName().trim().isEmpty()) {
-                contact.setName(null); // Allow null for flexibility
+                contact.setName("Unknown");
             }
             if (contact.getEmail() == null || contact.getEmail().trim().isEmpty()) {
-                contact.setEmail(null); // Allow null for flexibility
+                contact.setEmail("unknown_" + System.nanoTime() + "@example.com");
             }
             if (contact.getPhone() == null || contact.getPhone().trim().isEmpty()) {
-                contact.setPhone(null); // Allow null for flexibility
+                contact.setPhone(null);
             }
             if (contact.getStatus() == null || contact.getStatus().trim().isEmpty()) {
-                contact.setStatus("Open"); // Allow null for flexibility
+                contact.setStatus("Open");
             }
-            if (contact.getCompany() == null || contact.getCompany().trim().isEmpty()) {
-                contact.setCompany(null); // Allow null for flexibility
+            if (contact.getCompany() != null) {
+                if (contact.getCompany().getId() != null) {
+                    Company company = companyRepository.findById(contact.getCompany().getId())
+                            .orElseThrow(() -> new RuntimeException("Company not found: " + contact.getCompany().getId()));
+                    contact.setCompany(company);
+                } else if (contact.getCompany().getName() != null && !contact.getCompany().getName().trim().isEmpty()) {
+                    // Use CompanyService to create a valid company
+                    Company company = companyService.createCompany(contact.getCompany());
+                    contact.setCompany(company);
+                } else {
+                    contact.setCompany(null);
+                }
+            } else {
+                contact.setCompany(null);
             }
             if (contact.getNotes() == null || contact.getNotes().trim().isEmpty()) {
-                contact.setNotes(null); // Allow null for flexibility
+                contact.setNotes(null);
             }
 
-            // Set creation and last activity timestamps
             contact.setCreatedAt(LocalDateTime.now());
             contact.setLastActivity(LocalDateTime.now());
 
-            // Handle owner by username if provided
             if (contact.getOwnerUsername() != null && !contact.getOwnerUsername().trim().isEmpty()) {
                 User owner = userRepository.findByUsername(contact.getOwnerUsername()).orElse(null);
                 contact.setOwner(owner);
+            } else if (contact.getOwner() != null && contact.getOwner().getId() != null) {
+                User owner = userRepository.findById(contact.getOwner().getId())
+                        .orElseThrow(() -> new RuntimeException("Owner not found: " + contact.getOwner().getId()));
+                contact.setOwner(owner);
             }
-            contact.setOwnerUsername(null); // Clear temporary username field after mapping
+            contact.setOwnerUsername(null);
 
             return contact;
         }).collect(Collectors.toList()));
     }
+
     public void unassignContactsFromUser(Long userId) {
-        // Find all contacts where owner.id equals userId
         List<Contact> contacts = contactRepository.findByOwnerId(userId);
         if (!contacts.isEmpty()) {
-            // Set owner to null for each contact
             for (Contact contact : contacts) {
-                contact.setOwner(null); // Assuming Contact has a setOwner method
+                contact.setOwner(null);
             }
-            contactRepository.saveAll(contacts); // Save all updated contacts
+            contactRepository.saveAll(contacts);
         }
     }
+
     public User getUserByUsername(String username) {
         return userRepository.findByUsername(username).orElse(null);
     }
+
     private String escapeCsv(String value) {
         return value == null ? "" : "\"" + value.replace("\"", "\"\"") + "\"";
     }
