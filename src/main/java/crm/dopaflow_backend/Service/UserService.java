@@ -2,12 +2,13 @@ package crm.dopaflow_backend.Service;
 
 import crm.dopaflow_backend.Config.UserStatusWebSocketHandler;
 import crm.dopaflow_backend.Model.*;
+import crm.dopaflow_backend.Repository.SupportTicketRepository;
+import crm.dopaflow_backend.Repository.TicketMessageRepository;
 import crm.dopaflow_backend.Repository.UserRepository;
 import crm.dopaflow_backend.Security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,9 @@ public class UserService {
     private final NotificationService notificationService;
     private final JwtUtil jwtUtil;
     private final PhotoUploadService photoUploadService;
+
+    private final SupportTicketRepository ticketRepository;
+    private final TicketMessageRepository messageRepository;
     private UserStatusWebSocketHandler webSocketHandler;
 
     private static final Logger logger = LoggerFactory.getLogger(UserService.class);
@@ -192,10 +196,11 @@ public class UserService {
         contactService.unassignContactsFromUser(id);
         taskService.unassignTasksFromUser(id);
         notificationService.deleteNotificationsForUser(id);
-        // 2. Delete associated LoginHistory records (if not already cascaded)
-        if (user.getLoginHistory() != null) {
-            user.getLoginHistory().clear(); // Clear the list to trigger cascade deletion
-        }
+        user.deleteLoginHistory();
+        List<SupportTicket> tickets = ticketRepository.findByCreatorIdOrAssigneeId(id, id);
+        ticketRepository.deleteAll(tickets);
+        List<TicketMessage> messages = messageRepository.findBySenderId(id);
+        messageRepository.deleteAll(messages);
 
         // 3. Delete the user's profile photo if it exists
         if (user.getProfilePhotoUrl() != null) {
@@ -204,6 +209,9 @@ public class UserService {
 
         userRepository.delete(user);
     }
+
+
+
     public List<User> searchUsers(String searchTerm) {
         return userRepository.findByEmailOrUsernameContainingIgnoreCase(searchTerm);
     }

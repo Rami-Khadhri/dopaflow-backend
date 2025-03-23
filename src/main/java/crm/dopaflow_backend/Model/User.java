@@ -115,5 +115,10 @@ public class User implements UserDetails {
         loginHistory.add(history);
         history.setUser(this);
     }
+    public void deleteLoginHistory() {
+        if (loginHistory != null) {
+            loginHistory.clear();
+        }
+    }
 
 }

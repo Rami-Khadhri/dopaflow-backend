@@ -40,7 +40,7 @@ public class Task {
     private TypeTask typeTask;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "opportunity_id", nullable = false)
+    @JoinColumn(name = "opportunity_id", nullable = true)
     private Opportunity opportunity;
 
     @ManyToOne(fetch = FetchType.LAZY)

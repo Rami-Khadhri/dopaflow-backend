@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 public class OpportunityService {
     private final OpportunityRepository opportunityRepository;
     private final ContactRepository contactRepository;
+    private final TaskService taskService;
 
     public Page<Opportunity> getAllOpportunities(int page, int size, String sort) {
         Sort sortObj = Sort.by(Sort.Direction.fromString(sort.split(",")[1]), sort.split(",")[0]);
@@ -63,6 +64,7 @@ public class OpportunityService {
 
     public void deleteOpportunity(Long id) {
         Opportunity opportunity = getOpportunity(id);
+        taskService.unassignTasksFromOpportunity(id);
         opportunityRepository.delete(opportunity);
     }
 

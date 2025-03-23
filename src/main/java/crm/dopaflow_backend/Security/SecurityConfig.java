@@ -50,6 +50,7 @@ public class SecurityConfig {
                                 "/photos/**", // Serve uploaded photos
                                 "/attachments/**", // Serve uploaded photos
                                 "/contact-photos/**", // Serve uploaded photos
+                                "company-photos/**",
                                 "/avatars/**",
                                 "/api/ai/**",
                                 "/api/users/all", // Explicitly public
@@ -91,6 +92,9 @@ public class SecurityConfig {
 
                 registry.addResourceHandler("/contact-photos/**")
                         .addResourceLocations("file:uploads/contact-photos/")
+                        .setCachePeriod(0); // Disable caching for development
+                registry.addResourceHandler("/company-photos/**")
+                        .addResourceLocations("file:uploads/company-photos/")
                         .setCachePeriod(0); // Disable caching for development
                 registry.addResourceHandler("/attachments/**")
                         .addResourceLocations("file:uploads/attachments/")

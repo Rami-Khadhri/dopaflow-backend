@@ -146,11 +146,11 @@ public class TaskService {
     private User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
-            throw new RuntimeException("No authenticated user found");
+            throw new SecurityException("No authenticated user found. Please log in.");
         }
         String email = authentication.getName(); // JWT sets this as the email (sub claim)
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Current user not found: " + email));
+                .orElseThrow(() -> new RuntimeException("Current user not found in database: " + email));
     }
 
     private void createNotification(User assignedUser, Task task) {
@@ -172,23 +172,27 @@ public class TaskService {
         User currentUser = getCurrentUser();
         Opportunity opportunity = opportunityRepository.findById(opportunityId)
                 .orElseThrow(() -> new RuntimeException("Opportunity not found with id: " + opportunityId));
-        User assignedUser = userRepository.findById(assignedUserId)
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + assignedUserId));
-        if (!hasAdminPrivileges(currentUser) && !assignedUser.getId().equals(currentUser.getId()) ||!assignedUser.getId().equals(currentUser.getId()) ) {
-            throw new RuntimeException("You don't have the required privileges to create a task");
+
+        // Authorization: Admins can assign to anyone, regular users only to themselves
+        User assignedUser = null;
+        if (assignedUserId != null) {
+            assignedUser = userRepository.findById(assignedUserId)
+                    .orElseThrow(() -> new RuntimeException("User not found with id: " + assignedUserId));
+            if (!hasAdminPrivileges(currentUser) && !currentUser.getId().equals(assignedUserId)) {
+                throw new SecurityException("Regular users can only assign tasks to themselves");
+            }
         }
+
         task.setOpportunity(opportunity);
-        if(assignedUserId == null) {
-            task.setAssignedUser(null);
-        }else {
-            task.setAssignedUser(assignedUser);
-        }
+        task.setAssignedUser(assignedUser); // Can be null if unassigned
         if (task.getStatutTask() == null) {
             task.setStatutTask(StatutTask.ToDo);
         }
 
         Task savedTask = taskRepository.save(task);
-        createNotification(assignedUser, savedTask);
+        if (assignedUser != null) {
+            createNotification(assignedUser, savedTask);
+        }
         return savedTask;
     }
 
@@ -198,18 +202,16 @@ public class TaskService {
         Task task = taskRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Task not found with id: " + id));
         User previousAssignedUser = task.getAssignedUser();
-        // Validate assignedUserId if provided
+
+        // Authorization for updating assigned user
         if (assignedUserId != null) {
+            User assignedUser = userRepository.findById(assignedUserId)
+                    .orElseThrow(() -> new RuntimeException("User not found with id: " + assignedUserId));
             if (!hasAdminPrivileges(currentUser) && !currentUser.getId().equals(assignedUserId)) {
                 throw new SecurityException("Regular users can only assign tasks to themselves");
             }
-            User assignedUser = userRepository.findById(assignedUserId)
-                    .orElseThrow(() -> new RuntimeException("User not found with id: " + assignedUserId));
-
-            if (previousAssignedUser == null && !previousAssignedUser.getId().equals(assignedUserId)){
+            if (previousAssignedUser == null || !previousAssignedUser.getId().equals(assignedUserId)) {
                 task.setAssignedUser(assignedUser);
-            }
-            if (previousAssignedUser == null || !previousAssignedUser.getId().equals(assignedUserId) ) {
                 createNotification(assignedUser, task);
             }
         }
@@ -230,6 +232,7 @@ public class TaskService {
 
         return taskRepository.save(task);
     }
+
     @Transactional(readOnly = true)
     public Page<TaskDTO> getAllTasks(int page, int size, String sort) {
         User currentUser = getCurrentUser();
@@ -240,11 +243,11 @@ public class TaskService {
         } else {
             tasks = taskRepository.findByAssignedUser(currentUser, pageable);
         }
-        return tasks.map(TaskDTO::new); // Convert to DTO
+        return tasks.map(TaskDTO::new);
     }
 
     private boolean hasAdminPrivileges(User user) {
-        return (user.getRole() == Role.Admin || user.getRole() == Role.SuperAdmin);
+        return user.getRole() == Role.Admin || user.getRole() == Role.SuperAdmin;
     }
 
     private Sort parseSort(String sort) {
@@ -254,14 +257,28 @@ public class TaskService {
         String[] parts = sort.split(",");
         return Sort.by(Sort.Direction.fromString(parts[1]), parts[0]);
     }
+
     @Transactional
     public void unassignTasksFromUser(Long userId) {
         List<Task> tasks = taskRepository.findByAssignedUserId(userId);
         if (!tasks.isEmpty()) {
             for (Task task : tasks) {
-                task.setAssignedUser(null); // Reassign to DeletedUser instead of null
+                task.setAssignedUser(null);
             }
             taskRepository.saveAll(tasks);
         }
+    }
+    @Transactional
+    public void unassignTasksFromOpportunity(Long id) {
+        // Find all tasks associated with the opportunity
+        List<Task> tasks = taskRepository.findByOpportunityId(id);
+        if (!tasks.isEmpty()) {
+            for (Task task : tasks) {
+                task.setOpportunity(null);
+                task.setStatutTask(StatutTask.Cancelled);
+            }
+            taskRepository.saveAll(tasks);
+        }
+
     }
 }

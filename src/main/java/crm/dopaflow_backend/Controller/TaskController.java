@@ -50,7 +50,7 @@ public class TaskController {
     public ResponseEntity<?> createTask(
             @RequestBody Task task,
             @RequestParam Long opportunityId,
-            @RequestParam Long assignedUserId,
+            @RequestParam(required = false) Long assignedUserId, // Made optional
             @AuthenticationPrincipal User currentUser,
             BindingResult bindingResult) {
         System.out.println("Received: Task=" + task + ", opportunityId=" + opportunityId + ", assignedUserId=" + assignedUserId + ", currentUser=" + (currentUser != null ? currentUser.getUsername() : "null"));
@@ -67,6 +67,9 @@ public class TaskController {
         try {
             Task createdTask = taskService.createTask(task, opportunityId, assignedUserId);
             return ResponseEntity.status(HttpStatus.CREATED).body(new TaskDTO(createdTask));
+        } catch (SecurityException e) {
+            System.out.println("Security error: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Error: " + e.getMessage());
         } catch (RuntimeException e) {
             System.out.println("Error: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Error: " + e.getMessage());

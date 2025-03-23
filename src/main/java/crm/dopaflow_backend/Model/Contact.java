@@ -40,7 +40,7 @@ public class Contact {
     private User owner;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "company_id")
+    @JoinColumn(name = "company_id", nullable = true)
     private Company company;
 
     @Column(columnDefinition = "TEXT")
