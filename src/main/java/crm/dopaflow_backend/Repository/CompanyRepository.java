@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CompanyRepository extends JpaRepository<Company, Long> {
+    // In CompanyRepository.java
+    List<Company> findTop50ByOrderByNameAsc();
+
     Page<Company> findAll(Pageable pageable);
 
     Page<Company> findByNameContainingIgnoreCase(String name, Pageable pageable);

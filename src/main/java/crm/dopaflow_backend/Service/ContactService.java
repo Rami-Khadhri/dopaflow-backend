@@ -305,7 +305,7 @@ public class ContactService {
                     Company newCompany = new Company();
                     newCompany.setName(company.getName());
                     newCompany.setEmail(company.getEmail() != null && !company.getEmail().trim().isEmpty() ?
-                            company.getEmail() : "unknown_" + UUID.randomUUID().toString().substring(0, 8) + "@example.com");
+                            company.getEmail() : "company_" + UUID.randomUUID().toString().substring(0, 8) + "@dopaflow.com");
                     newCompany.setPhone(company.getPhone() != null && !company.getPhone().trim().isEmpty() ?
                             company.getPhone() : "N/A");
                     newCompany.setStatus(company.getStatus() != null && !company.getStatus().trim().isEmpty() ?

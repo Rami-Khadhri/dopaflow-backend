@@ -200,6 +200,24 @@ public class CompanyController {
         }
     }
 
+    // In CompanyController.java
+    @GetMapping("/allNames")
+    public ResponseEntity<List<Map<String, Object>>> getAllCompanyNames() {
+        try {
+            List<Company> companies = companyService.getTop50Companies(); // New method
+            List<Map<String, Object>> companyList = companies.stream()
+                    .map(company -> {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("id", company.getId());
+                        map.put("name", company.getName());
+                        return map;
+                    })
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(companyList);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Collections.emptyList());
+        }
+    }
     @GetMapping(value = "/import-progress/{sessionId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter getImportProgress(@PathVariable String sessionId) {
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);

@@ -27,8 +27,7 @@ import java.util.stream.Collectors;
 public class CompanyService {
     private final CompanyRepository companyRepository;
     private final UserRepository userRepository;
-    private final ContactRepository contactRepository; // Add ContactRepository
-
+    private final ContactRepository contactRepository;
     private Sort parseSort(String sort) {
         String[] parts = sort.split(",");
         return Sort.by(Sort.Direction.fromString(parts[1]), parts[0]);
@@ -112,7 +111,6 @@ public class CompanyService {
         }
     }
 
-    // Method to unassign a company from all related contacts
     @Transactional
     public void unassignCompanyFromContacts(Long companyId) {
         try {
@@ -123,7 +121,7 @@ public class CompanyService {
         }
     }
 
-    // Updated deleteCompany method to unassign contacts first
+
     @Transactional
     public boolean deleteCompany(Long id) {
         try {
@@ -245,7 +243,11 @@ public class CompanyService {
         try {
             Company company = new Company();
             company.setName(imported.getName());
-            company.setEmail(imported.getEmail() != null ? imported.getEmail() : "unknown@dopaflow.com");
+
+            // Generate a unique email based on company name and counter
+            String email = imported.getName().replaceAll("[^a-zA-Z0-9]", "").toLowerCase() + "@dopaflow.com";
+            company.setEmail(imported.getEmail() != null ? imported.getEmail() : email);
+
             company.setPhone(imported.getPhone() != null ? imported.getPhone() : "N/A");
             company.setStatus(imported.getStatus() != null ? imported.getStatus() : "Active");
             company.setAddress(imported.getAddress() != null ? imported.getAddress() : "N/A");
@@ -253,6 +255,7 @@ public class CompanyService {
             company.setIndustry(imported.getIndustry() != null ? imported.getIndustry() : "N/A");
             company.setNotes(imported.getNotes());
             company.setPhotoUrl(imported.getPhotoUrl());
+
             if (imported.getOwnerUsername() != null && !imported.getOwnerUsername().trim().isEmpty()) {
                 company.setOwner(userMap.get(imported.getOwnerUsername()));
             }
@@ -354,8 +357,16 @@ public class CompanyService {
             return baos.toByteArray();
         }
     }
-
+    // In CompanyService.java
+    public List<Company> getTop50Companies() {
+        return companyRepository.findTop50ByOrderByNameAsc();
+    }
     private String escapeCsv(String value) {
         return value == null ? "" : "\"" + value.replace("\"", "\"\"") + "\"";
     }
+
+    public List<Company> getAllCompaniesNoPagination() {
+        return companyRepository.findAll();
+    }
+
 }
