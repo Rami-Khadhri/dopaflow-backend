@@ -58,11 +58,19 @@ public class NotificationService {
         return notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new RuntimeException("Notification not found with ID: " + notificationId));
     }
+
     @Transactional
     public void deleteNotificationsForUser(Long userId) {
         List<Notification> notifications = notificationRepository.findByUserId(userId);
         if (!notifications.isEmpty()) {
             notificationRepository.deleteAll(notifications);
         }
+    }
+
+    @Transactional
+    public void deleteNotification(Long notificationId) {
+        Notification notification = notificationRepository.findById(notificationId)
+                .orElseThrow(() -> new RuntimeException("Notification not found with ID: " + notificationId));
+        notificationRepository.delete(notification);
     }
 }

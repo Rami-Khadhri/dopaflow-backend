@@ -23,7 +23,7 @@ public class NotificationController {
 
     private final NotificationService notificationService;
     private final JwtUtil jwtUtil;
-    private final UserService userService; // Inject UserService
+    private final UserService userService;
 
     @GetMapping
     public ResponseEntity<?> getNotifications(@RequestHeader("Authorization") String authHeader) {
@@ -104,6 +104,32 @@ public class NotificationController {
                     .orElseThrow(() -> new IllegalArgumentException("User not found for email: " + email));
             notificationService.markAllNotificationsAsRead(user);
             return new ResponseEntity<>(Map.of("message", "All notifications marked as read"), HttpStatus.OK);
+        } catch (Exception e) {
+            return new ResponseEntity<>(Map.of("error", "Invalid or missing token"), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @DeleteMapping("/{notificationId}")
+    public ResponseEntity<?> deleteNotification(@RequestHeader("Authorization") String authHeader, @PathVariable Long notificationId) {
+        try {
+            String email = jwtUtil.getEmailFromToken(authHeader);
+            User user = userService.findByEmail(email)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found for email: " + email));
+            notificationService.deleteNotification(notificationId);
+            return new ResponseEntity<>(Map.of("message", "Notification deleted successfully"), HttpStatus.OK);
+        } catch (Exception e) {
+            return new ResponseEntity<>(Map.of("error", "Invalid or missing token or notification not found"), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @DeleteMapping("/delete-all")
+    public ResponseEntity<?> deleteAllNotifications(@RequestHeader("Authorization") String authHeader) {
+        try {
+            String email = jwtUtil.getEmailFromToken(authHeader);
+            User user = userService.findByEmail(email)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found for email: " + email));
+            notificationService.deleteNotificationsForUser(user.getId()); // Pass userId instead of User object
+            return new ResponseEntity<>(Map.of("message", "All notifications deleted successfully"), HttpStatus.OK);
         } catch (Exception e) {
             return new ResponseEntity<>(Map.of("error", "Invalid or missing token"), HttpStatus.BAD_REQUEST);
         }
