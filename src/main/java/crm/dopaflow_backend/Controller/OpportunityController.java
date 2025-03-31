@@ -3,10 +3,11 @@ package crm.dopaflow_backend.Controller;
 import crm.dopaflow_backend.Model.Opportunity;
 import crm.dopaflow_backend.Model.User;
 import crm.dopaflow_backend.Service.OpportunityService;
+import crm.dopaflow_backend.Service.UserService;
+import crm.dopaflow_backend.Security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -14,9 +15,10 @@ import java.math.BigDecimal;
 @RestController
 @RequestMapping("/api/opportunities")
 @RequiredArgsConstructor
-
 public class OpportunityController {
     private final OpportunityService opportunityService;
+    private final UserService userService; // Add UserService dependency
+    private final JwtUtil jwtUtil;         // Add JwtUtil dependency
 
     @GetMapping("/all")
     public ResponseEntity<Page<Opportunity>> getAllOpportunities(
@@ -34,13 +36,25 @@ public class OpportunityController {
     @PostMapping("/add")
     public ResponseEntity<Opportunity> createOpportunity(
             @RequestBody Opportunity opportunity,
-            @AuthenticationPrincipal User owner) {
+            @RequestHeader("Authorization") String authHeader) { // Use token from header
+        // Extract email from JWT token
+        String email = jwtUtil.getEmailFromToken(authHeader);
+        // Find user by email
+        User owner = userService.getUserByEmail(email);
+        if (owner == null) {
+            throw new RuntimeException("User not found for email: " + email);
+        }
+        // Set only the owner's ID
         opportunity.setOwner(owner);
-        if (opportunity.getProgress() == null ){
+        // Set default values if null
+        if (opportunity.getProgress() == null) {
             opportunity.setProgress(0);
         }
-        if (opportunity.getValue() == null ){
+        if (opportunity.getValue() == null) {
             opportunity.setValue(BigDecimal.ZERO);
+        }
+        if (opportunity.getStatus() == null) {
+            opportunity.setStatus(crm.dopaflow_backend.Model.StatutOpportunity.IN_PROGRESS);
         }
         return ResponseEntity.ok(opportunityService.createOpportunity(opportunity));
     }

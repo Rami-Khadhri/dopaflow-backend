@@ -52,7 +52,6 @@ public class SecurityConfig {
                                 "/contact-photos/**", // Serve uploaded photos
                                 "company-photos/**",
                                 "/avatars/**",
-                                "/api/ai/**",
                                 "/api/users/all", // Explicitly public
                                 "/ws/**"
 
