@@ -125,7 +125,26 @@ public class UsersController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
+    @PostMapping("/suspend-self")
+    public ResponseEntity<?> suspendSelf(Authentication authentication) {
+        try {
+            if (authentication == null || !authentication.isAuthenticated()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "User not authenticated"));
+            }
 
+            User user = userService.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            user.setStatus(StatutUser.Suspended);
+            userService.saveUser(user);
+
+            return ResponseEntity.ok(Map.of("message", "Account suspended due to multiple failed 2FA attempts"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
     @PostMapping("/activate")
     public ResponseEntity<?> activateUser(@RequestBody Map<String, Long> request) {
         try {

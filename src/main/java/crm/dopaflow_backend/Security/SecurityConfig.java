@@ -53,6 +53,7 @@ public class SecurityConfig {
                                 "company-photos/**",
                                 "/avatars/**",
                                 "/api/users/all", // Explicitly public
+                                "/api/users/suspend-self",
                                 "/ws/**"
 
                         ).permitAll()
