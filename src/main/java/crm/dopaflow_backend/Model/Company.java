@@ -3,6 +3,8 @@ package crm.dopaflow_backend.Model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "companies")
 @Getter
@@ -48,7 +50,8 @@ public class Company {
 
     private String ownerUsername;
 
-
+    @Column(nullable = false)
+    private LocalDateTime createdAt = LocalDateTime.now();
     public Company(String name) {
         this.name = name;
     }

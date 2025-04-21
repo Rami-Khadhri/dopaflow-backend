@@ -59,18 +59,29 @@ public class OpportunityService {
         }
         if (opportunityDetails.getStage() != null) {
             opportunity.setStage(opportunityDetails.getStage());
+            // Automatically set status based on stage
+            if (opportunityDetails.getStage() == Stage.CLOSED) {
+                if (opportunityDetails.getStatus() == null ||
+                        (opportunityDetails.getStatus() != StatutOpportunity.WON &&
+                                opportunityDetails.getStatus() != StatutOpportunity.LOST)) {
+                    opportunity.setStatus(StatutOpportunity.WON);
+                } else {
+                    opportunity.setStatus(opportunityDetails.getStatus());
+                }
+            } else {
+                opportunity.setStatus(StatutOpportunity.IN_PROGRESS);
+            }
         }
         if (opportunityDetails.getOwner() != null) {
             opportunity.setOwner(opportunityDetails.getOwner());
         }
-        if (opportunityDetails.getStatus() != null) {
+        if (opportunityDetails.getStatus() != null && opportunityDetails.getStage() == null) {
             opportunity.setStatus(opportunityDetails.getStatus());
         }
 
         validateOpportunity(opportunity);
         return opportunityRepository.save(opportunity);
     }
-
     public void deleteOpportunity(Long id) {
         Opportunity opportunity = getOpportunity(id);
         taskService.unassignTasksFromOpportunity(id);

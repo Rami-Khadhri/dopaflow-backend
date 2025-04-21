@@ -64,7 +64,8 @@ public class SecurityConfig {
                                 "/api/opportunities/**",
                                 "/api/tasks/**",
                                 "/api/support/**",
-                                "/api/companies/**"
+                                "/api/companies/**",
+                                "/api/reporting/**"
 
                         ).authenticated()
                         .anyRequest().authenticated()

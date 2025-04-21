@@ -80,4 +80,7 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
         @Modifying
         @Query("UPDATE Contact c SET c.company = NULL WHERE c.company.id = :companyId")
         void unassignCompany(Long companyId);
+
+        @Query("SELECT COUNT(c) FROM Contact c WHERE c.createdAt >= :startDate")
+        long countNewContactsSince(LocalDateTime startDate);
 }
