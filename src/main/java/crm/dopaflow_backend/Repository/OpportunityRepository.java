@@ -28,6 +28,9 @@ public interface OpportunityRepository extends JpaRepository<Opportunity, Long> 
             @Param("startDate") LocalDateTime startDate,
             @Param("userId") Long userId);
 
+    @Query("SELECT COUNT(o) FROM Opportunity o WHERE o.owner.id = :userId")
+    long countOpportunitiesForUser(@Param("userId") Long userId);
+
     List<Opportunity> findTop3ByOrderByValueDesc();
     @Query("SELECT COUNT(o) FROM Opportunity o WHERE o.createdAt >= :startDate AND o.status = :status")
     long countByCreatedAtAfterAndStatus(@Param("startDate") LocalDateTime startDate, @Param("status") StatutOpportunity status);

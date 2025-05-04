@@ -57,6 +57,7 @@ public class SecurityConfig {
                                 "/ws/**"
 
                         ).permitAll()
+
                         // Authenticated endpoints
                         .requestMatchers("/api/auth/2fa/**",
                                 "/api/contacts/**",

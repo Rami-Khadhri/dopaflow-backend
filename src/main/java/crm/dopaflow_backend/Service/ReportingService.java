@@ -15,6 +15,12 @@ import crm.dopaflow_backend.Repository.OpportunityRepository;
 import crm.dopaflow_backend.Repository.TaskRepository;
 import crm.dopaflow_backend.Repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
@@ -22,6 +28,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -67,7 +75,6 @@ public class ReportingService {
         logger.info("Total Opportunity Value: {}", keyIndicators.getTotalOpportunityValue());
 
         // 2. Count of new opportunities in the last month
-        // Workaround: Fetch opportunities since oneMonthAgo and filter by IN_PROGRESS
         List<Opportunity> recentOpportunities = opportunityRepository.findWonOpportunitiesSince(StatutOpportunity.IN_PROGRESS, oneMonthAgo);
         long newOpportunities = recentOpportunities.size();
         keyIndicators.setNewOpportunities(newOpportunities);
@@ -78,9 +85,9 @@ public class ReportingService {
         keyIndicators.setCompletedTasks(completedTasks);
         logger.info("Completed Tasks: {}", completedTasks);
 
-        // 4. Customer satisfaction (mocked)
-        keyIndicators.setCustomerSatisfaction(92.0);
-        logger.info("Customer Satisfaction: 92.0% (mocked)");
+        long totalOpportunitiesForUser = opportunityRepository.countOpportunitiesForUser(currentUser.getId());
+        keyIndicators.setTotalOpportunitiesForUser(totalOpportunitiesForUser);
+        logger.info("total opportunities for" + currentUser.getUsername() + "= " + totalOpportunitiesForUser);
 
         // 5. New companies in the last month
         long newCompanies = companyRepository.countNewCompaniesSince(oneMonthAgo);
@@ -145,7 +152,7 @@ public class ReportingService {
             BigDecimal achieved = userWonOpportunities.stream()
                     .map(op -> op.getValue() != null ? op.getValue() : BigDecimal.ZERO)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal target = new BigDecimal("15000.0");
+            BigDecimal target = new BigDecimal("3000.0");
 
             SalesPerformanceDTO userPerformance = new SalesPerformanceDTO();
             userPerformance.setName(user.getUsername() != null ? user.getUsername() : user.getEmail());
@@ -162,6 +169,177 @@ public class ReportingService {
 
         logger.info("Report generated in {} ms", System.currentTimeMillis() - startTime);
         return report;
+    }
+
+    public byte[] generateExcelReport(ReportDTO report) throws IOException {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            // Create a sheet
+            Sheet sheet = workbook.createSheet("CRM Report");
+
+            // Create header style
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.LIGHT_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            // Create Key Indicators Section
+            int rowNum = 0;
+            Row headerRow = sheet.createRow(rowNum++);
+            Cell headerCell = headerRow.createCell(0);
+            headerCell.setCellValue("Key Indicators");
+            headerCell.setCellStyle(headerStyle);
+
+            KeyIndicatorsDTO indicators = report.getKeyIndicators();
+            createRow(sheet, rowNum++, "Total Opportunity Value (TND)", indicators.getTotalOpportunityValue().toString());
+            createRow(sheet, rowNum++, "New Opportunities", String.valueOf(indicators.getNewOpportunities()));
+            createRow(sheet, rowNum++, "Completed Tasks", String.valueOf(indicators.getCompletedTasks()));
+            createRow(sheet, rowNum++, "Total Opportunities for User", String.valueOf(indicators.getTotalOpportunitiesForUser()));
+            createRow(sheet, rowNum++, "New Companies", String.valueOf(indicators.getNewCompanies()));
+            createRow(sheet, rowNum++, "New Contacts", String.valueOf(indicators.getNewContacts()));
+
+            // Add empty row
+            rowNum++;
+
+            // Create Sales Evolution Section
+            headerRow = sheet.createRow(rowNum++);
+            headerCell = headerRow.createCell(0);
+            headerCell.setCellValue("Sales Evolution");
+            headerCell.setCellStyle(headerStyle);
+
+            Row evolutionHeader = sheet.createRow(rowNum++);
+            String[] evolutionColumns = {"Month", "Completed Tasks", "Opportunity Value (TND)"};
+            for (int i = 0; i < evolutionColumns.length; i++) {
+                Cell cell = evolutionHeader.createCell(i);
+                cell.setCellValue(evolutionColumns[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            for (SalesEvolutionDTO evolution : report.getSalesEvolution()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(evolution.getMonth());
+                row.createCell(1).setCellValue(evolution.getCompletedTasks());
+                row.createCell(2).setCellValue(evolution.getOpportunityValue().doubleValue());
+            }
+
+            // Add empty row
+            rowNum++;
+
+            // Create Sales Performance Section
+            headerRow = sheet.createRow(rowNum++);
+            headerCell = headerRow.createCell(0);
+            headerCell.setCellValue("Sales Performance");
+            headerCell.setCellStyle(headerStyle);
+
+            Row performanceHeader = sheet.createRow(rowNum++);
+            String[] performanceColumns = {"User", "Target (TND)", "Achieved (TND)", "Progress (%)"};
+            for (int i = 0; i < performanceColumns.length; i++) {
+                Cell cell = performanceHeader.createCell(i);
+                cell.setCellValue(performanceColumns[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            for (SalesPerformanceDTO performance : report.getSalesPerformance()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(performance.getName());
+                row.createCell(1).setCellValue(performance.getTarget().doubleValue());
+                row.createCell(2).setCellValue(performance.getAchieved().doubleValue());
+                row.createCell(3).setCellValue(performance.getProgress());
+            }
+
+            // Auto-size columns
+            for (int i = 0; i < 4; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            // Write to byte array
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private void createRow(Sheet sheet, int rowNum, String label, String value) {
+        Row row = sheet.createRow(rowNum);
+        row.createCell(0).setCellValue(label);
+        row.createCell(1).setCellValue(value);
+    }
+
+    public byte[] generatePdfReport(ReportDTO report) throws IOException {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+
+            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 16);
+                contentStream.beginText();
+                contentStream.newLineAtOffset(50, 750);
+                contentStream.showText("CRM Report");
+                contentStream.endText();
+
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
+                contentStream.beginText();
+                contentStream.newLineAtOffset(50, 720);
+                contentStream.showText("Key Indicators");
+                contentStream.endText();
+
+                contentStream.setFont(PDType1Font.HELVETICA, 10);
+                KeyIndicatorsDTO indicators = report.getKeyIndicators();
+                int yPosition = 700;
+                addPdfLine(contentStream, "Total Opportunity Value: " + indicators.getTotalOpportunityValue() + " TND", 50, yPosition);
+                yPosition -= 20;
+                addPdfLine(contentStream, "New Opportunities: " + indicators.getNewOpportunities(), 50, yPosition);
+                yPosition -= 20;
+                addPdfLine(contentStream, "Completed Tasks: " + indicators.getCompletedTasks(), 50, yPosition);
+                yPosition -= 20;
+                addPdfLine(contentStream, "Total Opportunities for User: " + indicators.getTotalOpportunitiesForUser(), 50, yPosition);
+                yPosition -= 20;
+                addPdfLine(contentStream, "New Companies: " + indicators.getNewCompanies(), 50, yPosition);
+                yPosition -= 20;
+                addPdfLine(contentStream, "New Contacts: " + indicators.getNewContacts(), 50, yPosition);
+
+                yPosition -= 30;
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
+                contentStream.beginText();
+                contentStream.newLineAtOffset(50, yPosition);
+                contentStream.showText("Sales Evolution");
+                contentStream.endText();
+
+                yPosition -= 20;
+                contentStream.setFont(PDType1Font.HELVETICA, 10);
+                for (SalesEvolutionDTO evolution : report.getSalesEvolution()) {
+                    addPdfLine(contentStream, String.format("%s: %d tasks, %s TND", evolution.getMonth(), evolution.getCompletedTasks(), evolution.getOpportunityValue()), 50, yPosition);
+                    yPosition -= 15;
+                }
+
+                yPosition -= 30;
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
+                contentStream.beginText();
+                contentStream.newLineAtOffset(50, yPosition);
+                contentStream.showText("Sales Performance");
+                contentStream.endText();
+
+                yPosition -= 20;
+                contentStream.setFont(PDType1Font.HELVETICA, 10);
+                for (SalesPerformanceDTO performance : report.getSalesPerformance()) {
+                    addPdfLine(contentStream, String.format("%s: Target %s TND, Achieved %s TND, Progress %.2f%%",
+                            performance.getName(), performance.getTarget(), performance.getAchieved(), performance.getProgress()), 50, yPosition);
+                    yPosition -= 15;
+                }
+            }
+
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            document.save(out);
+            return out.toByteArray();
+        }
+    }
+
+    private void addPdfLine(PDPageContentStream contentStream, String text, float x, float y) throws IOException {
+        contentStream.beginText();
+        contentStream.newLineAtOffset(x, y);
+        contentStream.showText(text);
+        contentStream.endText();
     }
 
     private User getCurrentUser() {
