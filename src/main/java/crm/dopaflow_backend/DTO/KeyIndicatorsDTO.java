@@ -13,7 +13,7 @@ public class KeyIndicatorsDTO {
     private BigDecimal totalOpportunityValue; // Total value of WON opportunities
     private long newOpportunities; // Count of IN_PROGRESS opportunities
     private long completedTasks; // Count of Done tasks
-    private long totalOpportunitiesForUser;
+    private long totalOpportunities;
     private long newCompanies;
     private long newContacts;
 

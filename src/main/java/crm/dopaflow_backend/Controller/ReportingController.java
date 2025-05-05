@@ -92,7 +92,7 @@ public class ReportingController {
         errorIndicators.setTotalOpportunityValue(BigDecimal.ZERO);
         errorIndicators.setNewOpportunities(0L);
         errorIndicators.setCompletedTasks(0L);
-        errorIndicators.setTotalOpportunitiesForUser(0L);
+        errorIndicators.setTotalOpportunities(0L);
         errorIndicators.setNewCompanies(0L);
         errorIndicators.setNewContacts(0L);
         errorResponse.setKeyIndicators(errorIndicators);

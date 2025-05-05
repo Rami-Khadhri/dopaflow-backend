@@ -85,9 +85,9 @@ public class ReportingService {
         keyIndicators.setCompletedTasks(completedTasks);
         logger.info("Completed Tasks: {}", completedTasks);
 
-        long totalOpportunitiesForUser = opportunityRepository.countOpportunitiesForUser(currentUser.getId());
-        keyIndicators.setTotalOpportunitiesForUser(totalOpportunitiesForUser);
-        logger.info("total opportunities for" + currentUser.getUsername() + "= " + totalOpportunitiesForUser);
+        long totalOpportunities = opportunityRepository.countOpportunities();
+        keyIndicators.setTotalOpportunities(totalOpportunities);
+        logger.info("total opportunities for" + currentUser.getUsername() + "= " + totalOpportunities);
 
         // 5. New companies in the last month
         long newCompanies = companyRepository.countNewCompaniesSince(oneMonthAgo);
@@ -195,7 +195,7 @@ public class ReportingService {
             createRow(sheet, rowNum++, "Total Opportunity Value (TND)", indicators.getTotalOpportunityValue().toString());
             createRow(sheet, rowNum++, "New Opportunities", String.valueOf(indicators.getNewOpportunities()));
             createRow(sheet, rowNum++, "Completed Tasks", String.valueOf(indicators.getCompletedTasks()));
-            createRow(sheet, rowNum++, "Total Opportunities for User", String.valueOf(indicators.getTotalOpportunitiesForUser()));
+            createRow(sheet, rowNum++, "Total Opportunities for User", String.valueOf(indicators.getTotalOpportunities()));
             createRow(sheet, rowNum++, "New Companies", String.valueOf(indicators.getNewCompanies()));
             createRow(sheet, rowNum++, "New Contacts", String.valueOf(indicators.getNewContacts()));
 
@@ -293,7 +293,7 @@ public class ReportingService {
                 yPosition -= 20;
                 addPdfLine(contentStream, "Completed Tasks: " + indicators.getCompletedTasks(), 50, yPosition);
                 yPosition -= 20;
-                addPdfLine(contentStream, "Total Opportunities for User: " + indicators.getTotalOpportunitiesForUser(), 50, yPosition);
+                addPdfLine(contentStream, "Total Opportunities : " + indicators.getTotalOpportunities(), 50, yPosition);
                 yPosition -= 20;
                 addPdfLine(contentStream, "New Companies: " + indicators.getNewCompanies(), 50, yPosition);
                 yPosition -= 20;
