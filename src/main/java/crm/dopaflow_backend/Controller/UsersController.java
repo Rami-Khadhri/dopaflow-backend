@@ -10,8 +10,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.text.SimpleDateFormat;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.stream.Collectors;
 
 @RestController
@@ -93,7 +96,22 @@ public class UsersController {
     public ResponseEntity<?> updateUser(@PathVariable Long id, @RequestBody User user) {
         try {
             User updatedUser = userService.updateUser(id, user);
-            return ResponseEntity.ok(updatedUser);
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+            dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+            String birthdateStr = updatedUser.getBirthdate() != null ? dateFormat.format(updatedUser.getBirthdate()) : "";
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("id", updatedUser.getId());
+            response.put("username", updatedUser.getUsername());
+            response.put("email", updatedUser.getEmail());
+            response.put("role", updatedUser.getRole().name());
+            response.put("birthdate", birthdateStr);
+            response.put("status", updatedUser.getStatus().name());
+            response.put("verified", updatedUser.getVerified());
+            response.put("lastLogin", updatedUser.getLastLogin());
+            response.put("profilePhotoUrl", updatedUser.getProfilePhotoUrl());
+
+            return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

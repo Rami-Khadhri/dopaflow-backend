@@ -19,6 +19,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.stream.Collectors;
 
 @RestController
@@ -36,6 +37,10 @@ public class ProfileController {
             String email = jwtUtil.getEmailFromToken(authHeader);
             User user = userService.findByEmail(email)
                     .orElseThrow(() -> new IllegalArgumentException("User not found for email: " + email));
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+            dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+            String birthdateStr = user.getBirthdate() != null ? dateFormat.format(user.getBirthdate()) : "";
+
             Map<String, Object> profileData = Map.of(
                     "username", user.getUsername(),
                     "email", user.getEmail(),
@@ -43,7 +48,7 @@ public class ProfileController {
                     "twoFactorEnabled", user.isTwoFactorEnabled(),
                     "lastLogin", user.getLastLogin(),
                     "profilePhotoUrl", user.getProfilePhotoUrl() != null ? user.getProfilePhotoUrl() : "",
-                    "birthdate", user.getBirthdate(),
+                    "birthdate", birthdateStr,
                     "status", user.getStatus(),
                     "verified", user.getVerified(),
                     "loginHistory", user.getLoginHistory().stream()
@@ -121,7 +126,8 @@ public class ProfileController {
             if (birthdateStr != null && !birthdateStr.trim().isEmpty()) {
                 try {
                     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-                    dateFormat.setLenient(false); // Strict parsing to catch invalid dates
+                    dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+                    dateFormat.setLenient(false);
                     birthdate = dateFormat.parse(birthdateStr);
                 } catch (ParseException e) {
                     logger.warn("Invalid birthdate format: {}", birthdateStr);
@@ -132,17 +138,17 @@ public class ProfileController {
 
             // Validate username (optional)
             if (username != null && username.trim().isEmpty()) {
-                username = null; // Treat empty string as null to avoid saving ""
+                username = null;
             }
 
             // Update user profile
             User updatedUser = userService.updateProfile(
                     email,
-                    username, // Null if not provided or empty
-                    null,     // currentPassword - not updated here
-                    null,     // newPassword - not updated here
+                    username,
+                    null,
+                    null,
                     birthdate,
-                    twoFactorEnabled // Pass through, but expect potential exception
+                    twoFactorEnabled
             );
 
             logger.info("Profile updated successfully for email: {}", email);
@@ -158,7 +164,6 @@ public class ProfileController {
                     .body(Map.of("message", "An unexpected error occurred: " + e.getMessage()));
         }
     }
-
     @PutMapping("/profile/change-password")
     public ResponseEntity<?> changePassword(
             @RequestHeader("Authorization") String authHeader,

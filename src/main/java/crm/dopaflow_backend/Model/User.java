@@ -69,6 +69,7 @@ public class User implements UserDetails {
     private List<LoginHistory> loginHistory = new ArrayList<>();
     @Column(name = "last_active") // New field for last active timestamp
     private Instant lastActive;
+    @JsonIgnore
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return Collections.singletonList(new SimpleGrantedAuthority(role.name()));

@@ -178,13 +178,13 @@ public class UserService {
             user.setPassword(passwordEncoder.encode(updatedUser.getPassword()));
         }
         user.setRole(updatedUser.getRole());
-        user.setBirthdate(updatedUser.getBirthdate());
+        user.setBirthdate(updatedUser.getBirthdate()); // Preserve birthdate as Date
         user.setStatus(updatedUser.getStatus());
-        user.setVerificationToken(updatedUser.getVerificationToken());
         user.setVerified(updatedUser.getVerified());
 
         return userRepository.save(user);
     }
+
     public void deleteUser(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
