@@ -94,11 +94,12 @@ public class CompanyController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long ownerId,
             @RequestParam(defaultValue = "false") boolean unassignedOnly,
+            @RequestParam(defaultValue = "false") boolean assignedOnly,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "id,desc") String sort) {
         try {
-            return ResponseEntity.ok(companyService.filterCompanies(status, ownerId, unassignedOnly, page, size, sort));
+            return ResponseEntity.ok(companyService.filterCompanies(status, ownerId, unassignedOnly,assignedOnly, page, size, sort));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", "Failed to filter companies: " + e.getMessage()));
         }

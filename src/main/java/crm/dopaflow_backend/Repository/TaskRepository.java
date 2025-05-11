@@ -61,4 +61,7 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
     @Query("SELECT t FROM Task t WHERE t.statutTask = :status AND t.deadline >= :startDate AND t.assignedUser.id = :userId")
     List<Task> findCompletedTasksSinceForUser(@Param("status") StatutTask status, @Param("startDate") Date startDate, @Param("userId") Long userId);
+    // Added method to find tasks by status and deadline before a given date
+    List<Task> findByStatutTaskAndDeadlineBefore(StatutTask statutTask, Date deadline);
+    List<Task> findByStatutTaskNotInAndDeadlineBetween(List<StatutTask> statuses, Date start, Date end);
 }

@@ -34,6 +34,7 @@ public interface CompanyRepository extends JpaRepository<Company, Long> {
             Pageable pageable
     );
 
+
     Page<Company> findByOwnerId(
             Long ownerId,
             Pageable pageable
@@ -42,6 +43,10 @@ public interface CompanyRepository extends JpaRepository<Company, Long> {
     Page<Company> findByOwnerIsNull(
             Pageable pageable
     );
+    Page<Company> findByOwnerIsNotNull(
+            Pageable pageable
+    );
+
 
     Optional<Company> findByName(String name);
 

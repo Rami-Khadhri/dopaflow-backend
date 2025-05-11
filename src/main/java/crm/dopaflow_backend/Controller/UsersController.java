@@ -1,12 +1,14 @@
 package crm.dopaflow_backend.Controller;
 
 import crm.dopaflow_backend.DTO.UserDTO;
+import crm.dopaflow_backend.Model.Role;
 import crm.dopaflow_backend.Model.StatutUser;
 import crm.dopaflow_backend.Model.User;
 import crm.dopaflow_backend.Service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -93,26 +95,44 @@ public class UsersController {
     }
 
     @PutMapping("/edit/{id}")
-    public ResponseEntity<?> updateUser(@PathVariable Long id, @RequestBody User user) {
+    public ResponseEntity<?> updateUser(@PathVariable Long id, @RequestBody Map<String, Object> userData) {
         try {
+            User user = new User();
+            user.setUsername((String) userData.get("username"));
+            user.setEmail((String) userData.get("email"));
+            user.setRole(Role.valueOf((String) userData.get("role")));
+            user.setStatus(StatutUser.valueOf((String) userData.get("status")));
+            user.setVerified(Boolean.parseBoolean(String.valueOf(userData.get("verified"))));
+            user.setProfilePhotoUrl((String) userData.get("profilePhotoUrl"));
+
+            // Parse birthdate manually as UTC
+            String birthdateStr = (String) userData.get("birthdate");
+            if (birthdateStr != null && !birthdateStr.isEmpty()) {
+                SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+                dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+                user.setBirthdate(dateFormat.parse(birthdateStr));
+            } else {
+                user.setBirthdate(null);
+            }
+
             User updatedUser = userService.updateUser(id, user);
             SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
             dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-            String birthdateStr = updatedUser.getBirthdate() != null ? dateFormat.format(updatedUser.getBirthdate()) : "";
+            String responseBirthdate = updatedUser.getBirthdate() != null ? dateFormat.format(updatedUser.getBirthdate()) : null;
 
             Map<String, Object> response = new HashMap<>();
             response.put("id", updatedUser.getId());
             response.put("username", updatedUser.getUsername());
             response.put("email", updatedUser.getEmail());
             response.put("role", updatedUser.getRole().name());
-            response.put("birthdate", birthdateStr);
+            response.put("birthdate", responseBirthdate);
             response.put("status", updatedUser.getStatus().name());
             response.put("verified", updatedUser.getVerified());
             response.put("lastLogin", updatedUser.getLastLogin());
             response.put("profilePhotoUrl", updatedUser.getProfilePhotoUrl());
 
             return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
@@ -126,7 +146,7 @@ public class UsersController {
             return ResponseEntity.notFound().build();
         }
     }
-
+    @PreAuthorize("hasAnyRole('Admin', 'SuperAdmin')")
     @PostMapping("/block")
     public ResponseEntity<?> blockUser(@RequestBody Map<String, Long> request) {
         try {

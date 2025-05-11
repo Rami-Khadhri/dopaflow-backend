@@ -63,7 +63,9 @@ public class Notification {
         MESSAGE_RECEIVED,
         TICKET_OPENED,
         TICKET_CLOSED,
-        TICKET_STATUS_CHANGED
+        TICKET_STATUS_CHANGED,
+        TASK_OVERDUE,
+        TASK_UPCOMING // New type for 24-hour reminders
 
     }
 }

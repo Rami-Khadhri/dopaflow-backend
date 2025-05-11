@@ -15,7 +15,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.scheduling.annotation.Scheduled;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
@@ -26,21 +27,25 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class TaskService {
 
+    private static final String TIME_ZONE = "Etc/GMT-1"; // GMT+1
+
     private final TaskRepository taskRepository;
     private final OpportunityRepository opportunityRepository;
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
 
     private Date parseDate(String dateStr, boolean isStart) {
+        ZoneId localZone = ZoneId.of(TIME_ZONE);
         if (dateStr == null || dateStr.trim().isEmpty()) {
-            return isStart
-                    ? Date.from(LocalDateTime.now().minusYears(1).atZone(ZoneId.systemDefault()).toInstant())
-                    : Date.from(LocalDateTime.now().plusDays(1).atZone(ZoneId.systemDefault()).toInstant());
+            LocalDateTime defaultTime = isStart
+                    ? LocalDateTime.now(localZone).minusYears(1)
+                    : LocalDateTime.now(localZone).plusDays(1);
+            return Date.from(defaultTime.atZone(localZone).toInstant());
         }
         try {
-            return Date.from(LocalDateTime.parse(dateStr).atZone(ZoneId.systemDefault()).toInstant());
+            LocalDateTime localDateTime = LocalDateTime.parse(dateStr);
+            return Date.from(localDateTime.atZone(localZone).toInstant());
         } catch (Exception e) {
-            System.out.println("Date parse error: " + dateStr);
             throw new RuntimeException("Invalid date format. Expected: yyyy-MM-dd'T'HH:mm:ss", e);
         }
     }
@@ -148,20 +153,33 @@ public class TaskService {
         if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
             throw new SecurityException("No authenticated user found. Please log in.");
         }
-        String email = authentication.getName(); // JWT sets this as the email (sub claim)
+        String email = authentication.getName();
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Current user not found in database: " + email));
     }
 
-    private void createNotification(User assignedUser, Task task) {
-        String message = "You have been assigned a new task: " + task.getTitle() + " for opportunity: " + task.getOpportunity().getTitle();
+    private void createNotification(User assignedUser, Task task, Notification.NotificationType type) {
+        String message;
+        switch (type) {
+            case TASK_ASSIGNED:
+                message = "You have been assigned a new task: " + task.getTitle() + " for opportunity: " + task.getOpportunity().getTitle();
+                break;
+            case TASK_UPCOMING:
+                message = "Reminder: Task '" + task.getTitle() + "' is due in 24 hours!";
+                break;
+            case TASK_OVERDUE:
+                message = "Task '" + task.getTitle() + "' is overdue!";
+                break;
+            default:
+                message = "Notification for task: " + task.getTitle();
+        }
         String link = "/tasks/" + task.getId();
         Notification notification = Notification.builder()
                 .message(message)
-                .timestamp(LocalDateTime.now())
+                .timestamp(LocalDateTime.now(ZoneId.of(TIME_ZONE)))
                 .isRead(false)
                 .user(assignedUser)
-                .type(Notification.NotificationType.TASK_ASSIGNED)
+                .type(type)
                 .link(link)
                 .build();
         notificationRepository.save(notification);
@@ -172,6 +190,15 @@ public class TaskService {
         User currentUser = getCurrentUser();
         Opportunity opportunity = opportunityRepository.findById(opportunityId)
                 .orElseThrow(() -> new RuntimeException("Opportunity not found with id: " + opportunityId));
+
+        // Validate deadline: must be at least tomorrow in local time
+        ZoneId localZone = ZoneId.of(TIME_ZONE);
+        LocalDateTime localDeadline = LocalDateTime.ofInstant(task.getDeadline().toInstant(), localZone);
+        LocalDate localDate = localDeadline.toLocalDate();
+        LocalDate today = LocalDate.now(localZone);
+        if (localDate.isBefore(today.plusDays(1))) {
+            throw new IllegalArgumentException("Deadline must be at least tomorrow");
+        }
 
         // Authorization: Admins can assign to anyone, regular users only to themselves
         User assignedUser = null;
@@ -184,14 +211,14 @@ public class TaskService {
         }
 
         task.setOpportunity(opportunity);
-        task.setAssignedUser(assignedUser); // Can be null if unassigned
+        task.setAssignedUser(assignedUser);
         if (task.getStatutTask() == null) {
             task.setStatutTask(StatutTask.ToDo);
         }
 
         Task savedTask = taskRepository.save(task);
         if (assignedUser != null) {
-            createNotification(assignedUser, savedTask);
+            createNotification(assignedUser, savedTask, Notification.NotificationType.TASK_ASSIGNED);
         }
         return savedTask;
     }
@@ -203,6 +230,17 @@ public class TaskService {
                 .orElseThrow(() -> new RuntimeException("Task not found with id: " + id));
         User previousAssignedUser = task.getAssignedUser();
 
+        // Validate deadline if provided: must be at least tomorrow in local time
+        if (taskDetails.getDeadline() != null) {
+            ZoneId localZone = ZoneId.of(TIME_ZONE);
+            LocalDateTime localDeadline = LocalDateTime.ofInstant(taskDetails.getDeadline().toInstant(), localZone);
+            LocalDate localDate = localDeadline.toLocalDate();
+            LocalDate today = LocalDate.now(localZone);
+            if (localDate.isBefore(today.plusDays(1))) {
+                throw new IllegalArgumentException("Deadline must be at least tomorrow");
+            }
+        }
+
         // Authorization for updating assigned user
         if (assignedUserId != null) {
             User assignedUser = userRepository.findById(assignedUserId)
@@ -212,7 +250,7 @@ public class TaskService {
             }
             if (previousAssignedUser == null || !previousAssignedUser.getId().equals(assignedUserId)) {
                 task.setAssignedUser(assignedUser);
-                createNotification(assignedUser, task);
+                createNotification(assignedUser, task, Notification.NotificationType.TASK_ASSIGNED);
             }
         }
 
@@ -246,6 +284,61 @@ public class TaskService {
         return tasks.map(TaskDTO::new);
     }
 
+    @Scheduled(fixedRate = 60000) // Check every minute
+    @Transactional
+    public void checkOverdueTasks() {
+        ZoneId localZone = ZoneId.of(TIME_ZONE);
+        LocalDateTime nowLocal = LocalDateTime.now(localZone);
+        Date nowUtc = Date.from(nowLocal.atZone(localZone).toInstant());
+        List<Task> overdueTasks = taskRepository.findByStatutTaskAndDeadlineBefore(
+                StatutTask.InProgress,
+                nowUtc
+        );
+        for (Task task : overdueTasks) {
+            User assignedUser = task.getAssignedUser();
+            if (assignedUser != null) {
+                String link = "/tasks/" + task.getId();
+                boolean hasReminder = notificationRepository.existsByUserAndTypeAndLink(
+                        assignedUser,
+                        Notification.NotificationType.TASK_OVERDUE,
+                        link
+                );
+                if (!hasReminder) {
+                    createNotification(assignedUser, task, Notification.NotificationType.TASK_OVERDUE);
+                }
+            }
+        }
+    }
+    @Scheduled(fixedRate = 60000) // Runs every minute
+    @Transactional
+    public void checkUpcomingDeadlines() {
+        ZoneId localZone = ZoneId.of("Europe/London");
+        LocalDateTime nowLocal = LocalDateTime.now(localZone);
+        LocalDateTime in24HoursLocal = nowLocal.plusHours(24);
+        Date start = Date.from(nowLocal.atZone(localZone).toInstant());
+        Date end = Date.from(in24HoursLocal.atZone(localZone).toInstant());
+
+        List<Task> upcomingTasks = taskRepository.findByStatutTaskNotInAndDeadlineBetween(
+                List.of(StatutTask.Done, StatutTask.Cancelled),
+                start,
+                end
+        );
+        for (Task task : upcomingTasks) {
+            User assignedUser = task.getAssignedUser();
+            if (assignedUser != null) {
+                String link = "/tasks/" + task.getId();
+                boolean hasReminder = notificationRepository.existsByUserAndTypeAndLink(
+                        assignedUser,
+                        Notification.NotificationType.TASK_UPCOMING,
+                        link
+                );
+                if (!hasReminder) {
+                    createNotification(assignedUser, task, Notification.NotificationType.TASK_UPCOMING);
+                }
+            }
+        }
+    }
+
     private boolean hasAdminPrivileges(User user) {
         return user.getRole() == Role.Admin || user.getRole() == Role.SuperAdmin;
     }
@@ -268,9 +361,9 @@ public class TaskService {
             taskRepository.saveAll(tasks);
         }
     }
+
     @Transactional
     public void unassignTasksFromOpportunity(Long id) {
-        // Find all tasks associated with the opportunity
         List<Task> tasks = taskRepository.findByOpportunityId(id);
         if (!tasks.isEmpty()) {
             for (Task task : tasks) {
@@ -279,6 +372,5 @@ public class TaskService {
             }
             taskRepository.saveAll(tasks);
         }
-
     }
 }
