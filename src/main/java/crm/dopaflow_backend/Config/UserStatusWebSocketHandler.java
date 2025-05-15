@@ -68,14 +68,22 @@ public class UserStatusWebSocketHandler extends TextWebSocketHandler {
 
     private Long extractUserId(WebSocketSession session) {
         String query = session.getUri().getQuery();
-        if (query == null || !query.contains("userId=")) return null;
+        if (query == null || !query.contains("userId=")) {
+            logger.warn("Query string is missing or doesn't contain userId parameter");
+            return null;
+        }
 
         String userIdParam = query.split("userId=")[1].split("&")[0];
         try {
             return Long.parseLong(userIdParam);
         } catch (NumberFormatException e) {
+            logger.debug("userId is not a number, trying to find user by email: {}", userIdParam);
             User user = userService.getUserByEmail(userIdParam);
-            return user != null ? user.getId() : null;
+            if (user == null) {
+                logger.warn("No user found for email: {}", userIdParam);
+                return null;
+            }
+            return user.getId();
         }
     }
 

@@ -3,7 +3,6 @@ package crm.dopaflow_backend.DTO;
 import crm.dopaflow_backend.Model.Task;
 import lombok.Data;
 
-import java.time.LocalDateTime;
 import java.util.Date;
 
 @Data
@@ -19,6 +18,13 @@ public class TaskDTO {
     private String opportunityTitle;
     private Long assignedUserId;
     private String assignedUserUsername;
+    private String assignedUserProfilePhotoUrl;
+    private String contactName;
+    private String contactPhotoUrl;
+    private String companyName;
+    private String companyPhotoUrl;
+    private Date completedAt;
+    private boolean archived;
 
     public TaskDTO(Task task) {
         this.id = task.getId();
@@ -32,5 +38,12 @@ public class TaskDTO {
         this.opportunityTitle = task.getOpportunity() != null ? task.getOpportunity().getTitle() : null;
         this.assignedUserId = task.getAssignedUser() != null ? task.getAssignedUser().getId() : null;
         this.assignedUserUsername = task.getAssignedUser() != null ? task.getAssignedUser().getUsername() : null;
+        this.assignedUserProfilePhotoUrl = task.getAssignedUser() != null ? task.getAssignedUser().getProfilePhotoUrl() : null;
+        this.contactName = task.getOpportunity() != null && task.getOpportunity().getContact() != null ? task.getOpportunity().getContact().getName() : null;
+        this.contactPhotoUrl = task.getOpportunity() != null && task.getOpportunity().getContact() != null ? task.getOpportunity().getContact().getPhotoUrl() : null;
+        this.companyName = task.getOpportunity() != null && task.getOpportunity().getContact() != null && task.getOpportunity().getContact().getCompany() != null ? task.getOpportunity().getContact().getCompany().getName() : null;
+        this.companyPhotoUrl = task.getOpportunity() != null && task.getOpportunity().getContact() != null && task.getOpportunity().getContact().getCompany() != null ? task.getOpportunity().getContact().getCompany().getPhotoUrl() : null;
+        this.completedAt = task.getCompletedAt();
+        this.archived = task.isArchived();
     }
 }

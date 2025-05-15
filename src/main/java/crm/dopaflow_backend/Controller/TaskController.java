@@ -29,9 +29,12 @@ public class TaskController {
             @RequestParam(defaultValue = "deadline,desc") String sort) {
         try {
             return ResponseEntity.ok(taskService.getAllTasks(page, size, sort));
-        } catch (RuntimeException e) {
-            System.out.println("Error fetching tasks: " + e.getMessage());
+        } catch (SecurityException e) {
+            System.out.println("Security error fetching tasks: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(null);
+        } catch (Exception e) {
+            System.out.println("Error fetching tasks: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }
 
@@ -50,7 +53,7 @@ public class TaskController {
     public ResponseEntity<?> createTask(
             @RequestBody Task task,
             @RequestParam Long opportunityId,
-            @RequestParam(required = false) Long assignedUserId, // Made optional
+            @RequestParam(required = false) Long assignedUserId,
             @AuthenticationPrincipal User currentUser,
             BindingResult bindingResult) {
         System.out.println("Received: Task=" + task + ", opportunityId=" + opportunityId + ", assignedUserId=" + assignedUserId + ", currentUser=" + (currentUser != null ? currentUser.getUsername() : "null"));
@@ -130,11 +133,25 @@ public class TaskController {
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) Long assignedUserId,
             @RequestParam(defaultValue = "false") boolean unassignedOnly,
+            @RequestParam(required = false) Long opportunityId,
+            @RequestParam(required = false) String priority,
+            @RequestParam(defaultValue = "false") boolean archived,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "deadline,desc") String sort) {
-        return ResponseEntity.ok(taskService.filterTasks(status, startDate, endDate, assignedUserId, unassignedOnly, page, size, sort)
-                .map(TaskDTO::new));
+        try {
+            return ResponseEntity.ok(taskService.filterTasks(status, startDate, endDate, assignedUserId, unassignedOnly, opportunityId, priority, archived, page, size, sort)
+                    .map(TaskDTO::new));
+        } catch (IllegalArgumentException e) {
+            System.out.println("Invalid parameter: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(null);
+        } catch (SecurityException e) {
+            System.out.println("Security error: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(null);
+        } catch (Exception e) {
+            System.out.println("Error filtering tasks: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
     }
 
     @GetMapping("/search")
@@ -143,13 +160,23 @@ public class TaskController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "title,asc") String sort) {
-        return ResponseEntity.ok(taskService.searchTasks(query, page, size, sort).map(TaskDTO::new));
+        try {
+            return ResponseEntity.ok(taskService.searchTasks(query, page, size, sort).map(TaskDTO::new));
+        } catch (Exception e) {
+            System.out.println("Error searching tasks: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
     }
 
     @GetMapping("/opportunity/{opportunityId}")
     public ResponseEntity<List<TaskDTO>> getTasksByOpportunityId(@PathVariable Long opportunityId) {
-        return ResponseEntity.ok(taskService.getTaskByOpportunityId(opportunityId).stream()
-                .map(TaskDTO::new)
-                .collect(Collectors.toList()));
+        try {
+            return ResponseEntity.ok(taskService.getTaskByOpportunityId(opportunityId).stream()
+                    .map(TaskDTO::new)
+                    .collect(Collectors.toList()));
+        } catch (Exception e) {
+            System.out.println("Error fetching tasks by opportunity: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
     }
 }

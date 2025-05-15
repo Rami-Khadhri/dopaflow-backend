@@ -47,4 +47,9 @@ public class Task {
     @JoinColumn(name = "assigned_user_id", nullable = true)
     private User assignedUser;
 
+    @Column
+    private Date completedAt;
+
+    @Column(nullable = false)
+    private boolean archived = false;
 }

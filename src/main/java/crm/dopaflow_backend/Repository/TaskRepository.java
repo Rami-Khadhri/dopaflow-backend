@@ -1,5 +1,6 @@
 package crm.dopaflow_backend.Repository;
 
+import crm.dopaflow_backend.Model.Priority;
 import crm.dopaflow_backend.Model.StatutTask;
 import crm.dopaflow_backend.Model.Task;
 import crm.dopaflow_backend.Model.User;
@@ -38,6 +39,60 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
     Page<Task> findByStatutTaskAndDeadlineBetween(
             StatutTask statutTask, Date startDate, Date endDate, Pageable pageable);
 
+    Page<Task> findByOpportunityIdAndAssignedUserIsNullAndDeadlineBetween(
+            Long opportunityId, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByOpportunityIdAndAssignedUserIdAndDeadlineBetween(
+            Long opportunityId, Long assignedUserId, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByOpportunityIdAndDeadlineBetween(
+            Long opportunityId, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByOpportunityIdAndStatutTaskAndAssignedUserIsNullAndDeadlineBetween(
+            Long opportunityId, StatutTask statutTask, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByOpportunityIdAndStatutTaskAndAssignedUserIdAndDeadlineBetween(
+            Long opportunityId, StatutTask statutTask, Long assignedUserId, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByOpportunityIdAndStatutTaskAndDeadlineBetween(
+            Long opportunityId, StatutTask statutTask, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndAssignedUserIsNullAndDeadlineBetween(
+            Priority priority, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndAssignedUserIdAndDeadlineBetween(
+            Priority priority, Long assignedUserId, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndDeadlineBetween(
+            Priority priority, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndStatutTaskAndAssignedUserIsNullAndDeadlineBetween(
+            Priority priority, StatutTask statutTask, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndStatutTaskAndAssignedUserIdAndDeadlineBetween(
+            Priority priority, StatutTask statutTask, Long assignedUserId, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndStatutTaskAndDeadlineBetween(
+            Priority priority, StatutTask statutTask, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndOpportunityIdAndAssignedUserIsNullAndDeadlineBetween(
+            Priority priority, Long opportunityId, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndOpportunityIdAndAssignedUserIdAndDeadlineBetween(
+            Priority priority, Long opportunityId, Long assignedUserId, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndOpportunityIdAndDeadlineBetween(
+            Priority priority, Long opportunityId, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndOpportunityIdAndStatutTaskAndAssignedUserIsNullAndDeadlineBetween(
+            Priority priority, Long opportunityId, StatutTask statutTask, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndOpportunityIdAndStatutTaskAndAssignedUserIdAndDeadlineBetween(
+            Priority priority, Long opportunityId, StatutTask statutTask, Long assignedUserId, Date startDate, Date endDate, Pageable pageable);
+
+    Page<Task> findByPriorityAndOpportunityIdAndStatutTaskAndDeadlineBetween(
+            Priority priority, Long opportunityId, StatutTask statutTask, Date startDate, Date endDate, Pageable pageable);
+
     @Query("SELECT COUNT(t) FROM Task t WHERE t.statutTask = :status")
     long countCompletedTasks(@Param("status") StatutTask status);
 
@@ -61,7 +116,19 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
     @Query("SELECT t FROM Task t WHERE t.statutTask = :status AND t.deadline >= :startDate AND t.assignedUser.id = :userId")
     List<Task> findCompletedTasksSinceForUser(@Param("status") StatutTask status, @Param("startDate") Date startDate, @Param("userId") Long userId);
-    // Added method to find tasks by status and deadline before a given date
+
     List<Task> findByStatutTaskAndDeadlineBefore(StatutTask statutTask, Date deadline);
     List<Task> findByStatutTaskNotInAndDeadlineBetween(List<StatutTask> statuses, Date start, Date end);
+
+    // Updated methods for archived tasks
+    Page<Task> findByArchivedTrue(Pageable pageable);
+
+    Page<Task> findByArchivedTrueAndOpportunityId(Long opportunityId, Pageable pageable);
+
+    Page<Task> findByArchivedTrueAndStatutTask(StatutTask statutTask, Pageable pageable);
+
+    Page<Task> findByArchivedTrueAndPriority(Priority priority, Pageable pageable);
+
+    @Query("SELECT t FROM Task t WHERE t.archived = true AND t.completedAt >= :startDate AND t.completedAt <= :endDate")
+    Page<Task> findByArchivedTrueAndCompletedAtBetween(@Param("startDate") Date startDate, @Param("endDate") Date endDate, Pageable pageable);
 }
