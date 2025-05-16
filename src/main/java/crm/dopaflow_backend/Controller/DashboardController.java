@@ -107,14 +107,14 @@ public class DashboardController {
     }
 
     private List<UserDTO> getActiveUsers() {
-        LocalDateTime oneDayAgo = LocalDateTime.now().minusDays(1);
+        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
         return userService.getAllUsersWithActivity().stream()
                 .filter(u -> {
                     Boolean isOnline = (Boolean) u.get("isOnline");
                     Long lastActiveMillis = (Long) u.get("lastActive");
                     return (isOnline != null && isOnline) ||
                             (lastActiveMillis != null && LocalDateTime.ofInstant(
-                                    Instant.ofEpochMilli(lastActiveMillis), ZoneId.systemDefault()).isAfter(oneDayAgo));
+                                    Instant.ofEpochMilli(lastActiveMillis), ZoneId.systemDefault()).isAfter(sevenDaysAgo));
                 })
                 .map(u -> new UserDTO(
                         (String) u.get("username"),
