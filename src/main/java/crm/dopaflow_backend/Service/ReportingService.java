@@ -4,16 +4,8 @@ import crm.dopaflow_backend.DTO.KeyIndicatorsDTO;
 import crm.dopaflow_backend.DTO.ReportDTO;
 import crm.dopaflow_backend.DTO.SalesEvolutionDTO;
 import crm.dopaflow_backend.DTO.SalesPerformanceDTO;
-import crm.dopaflow_backend.Model.Opportunity;
-import crm.dopaflow_backend.Model.StatutOpportunity;
-import crm.dopaflow_backend.Model.StatutTask;
-import crm.dopaflow_backend.Model.Task;
-import crm.dopaflow_backend.Model.User;
-import crm.dopaflow_backend.Repository.CompanyRepository;
-import crm.dopaflow_backend.Repository.ContactRepository;
-import crm.dopaflow_backend.Repository.OpportunityRepository;
-import crm.dopaflow_backend.Repository.TaskRepository;
-import crm.dopaflow_backend.Repository.UserRepository;
+import crm.dopaflow_backend.Model.*;
+import crm.dopaflow_backend.Repository.*;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -36,18 +28,21 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.time.format.TextStyle;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
 public class ReportingService {
 
-    private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("MMM");
+    private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH);
 
     private final OpportunityRepository opportunityRepository;
     private final ContactRepository contactRepository;
     private final CompanyRepository companyRepository;
     private final TaskRepository taskRepository;
     private final UserRepository userRepository;
+    private final MonthlyPerformanceRepository monthlyPerformanceRepository;
 
     @Transactional(readOnly = true)
     public ReportDTO generateReport() {
@@ -56,6 +51,8 @@ public class ReportingService {
         LocalDateTime sixMonthsAgo = now.minus(6, ChronoUnit.MONTHS);
         LocalDateTime oneMonthAgo = now.minus(1, ChronoUnit.MONTHS);
         Date sixMonthsAgoDate = Date.from(sixMonthsAgo.atZone(ZoneId.systemDefault()).toInstant());
+        int currentYear = now.getYear();
+        int currentMonth = now.getMonthValue();
 
         User currentUser = getCurrentUser();
 
@@ -98,9 +95,9 @@ public class ReportingService {
         }
 
         for (Opportunity op : wonOpportunities) {
-            LocalDateTime createdDate = op.getCreatedAt();
-            if (createdDate != null && !createdDate.isBefore(sixMonthsAgo)) {
-                String month = createdDate.format(MONTH_FORMATTER).toUpperCase();
+            LocalDateTime updatedAt = op.getUpdatedAt();
+            if (updatedAt != null && !updatedAt.isBefore(sixMonthsAgo)) {
+                String month = updatedAt.format(MONTH_FORMATTER).toUpperCase();
                 salesEvolution.stream()
                         .filter(data -> data.getMonth().equals(month))
                         .findFirst()
@@ -112,22 +109,74 @@ public class ReportingService {
         // Sales Performance
         List<SalesPerformanceDTO> salesPerformance = new ArrayList<>();
         for (User user : userRepository.findAll()) {
-            List<Opportunity> userOpportunities = opportunityRepository.findWonOpportunitiesSinceForUser(StatutOpportunity.WON, sixMonthsAgo, user.getId());
-            BigDecimal achieved = userOpportunities.stream()
-                    .map(op -> op.getValue() != null ? op.getValue() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal target = new BigDecimal("3000.0");
+            MonthlyPerformance mp = monthlyPerformanceRepository.findByUserAndYearAndMonth(user, currentYear, currentMonth)
+                    .orElse(new MonthlyPerformance(user, currentYear, currentMonth, BigDecimal.ZERO));
+            BigDecimal target = mp.getTarget();
+            BigDecimal achieved = calculateAchievedForMonth(user, currentYear, currentMonth);
 
             SalesPerformanceDTO performance = new SalesPerformanceDTO();
             performance.setName(user.getUsername() != null ? user.getUsername() : user.getEmail());
             performance.setTarget(target);
             performance.setAchieved(achieved);
             performance.setProgress(target.compareTo(BigDecimal.ZERO) != 0 ? achieved.divide(target, 4, BigDecimal.ROUND_HALF_UP).multiply(BigDecimal.valueOf(100)).doubleValue() : 0.0);
+            performance.setUserId(user.getId());
+            performance.setMonthYear(now.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + currentYear);
             salesPerformance.add(performance);
         }
         report.setSalesPerformance(salesPerformance);
 
         return report;
+    }
+
+    private BigDecimal calculateAchievedForMonth(User user, int year, int month) {
+        LocalDateTime startOfMonth = LocalDateTime.of(year, month, 1, 0, 0);
+        LocalDateTime endOfMonth = startOfMonth.plusMonths(1).minusSeconds(1);
+        List<Opportunity> opportunities = opportunityRepository.findByOwnerAndStatusAndUpdatedAtBetween(
+                user, StatutOpportunity.WON, startOfMonth, endOfMonth);
+        return opportunities.stream()
+                .map(op -> op.getValue() != null ? op.getValue() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SalesPerformanceDTO> getUserHistory(Long userId) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
+        List<MonthlyPerformance> performances = monthlyPerformanceRepository.findByUser(user);
+        List<SalesPerformanceDTO> history = new ArrayList<>();
+        for (MonthlyPerformance mp : performances) {
+            BigDecimal achieved = calculateAchievedForMonth(user, mp.getYear(), mp.getMonth());
+            SalesPerformanceDTO dto = new SalesPerformanceDTO();
+            dto.setName(user.getUsername() != null ? user.getUsername() : user.getEmail());
+            dto.setTarget(mp.getTarget());
+            dto.setAchieved(achieved);
+            dto.setProgress(mp.getTarget().compareTo(BigDecimal.ZERO) != 0 ? achieved.divide(mp.getTarget(), 4, BigDecimal.ROUND_HALF_UP).multiply(BigDecimal.valueOf(100)).doubleValue() : 0.0);
+            dto.setUserId(user.getId());
+            dto.setMonthYear(LocalDateTime.of(mp.getYear(), mp.getMonth(), 1, 0, 0)
+                    .getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + mp.getYear());
+            history.add(dto);
+        }
+        return history;
+    }
+
+    @Transactional(readOnly = true)
+    public List<SalesPerformanceDTO> getTeamPerformanceForMonth(int year, int month) {
+        List<User> users = userRepository.findAll();
+        List<SalesPerformanceDTO> performances = new ArrayList<>();
+        for (User user : users) {
+            MonthlyPerformance mp = monthlyPerformanceRepository.findByUserAndYearAndMonth(user, year, month)
+                    .orElse(new MonthlyPerformance(user, year, month, BigDecimal.ZERO));
+            BigDecimal achieved = calculateAchievedForMonth(user, year, month);
+            SalesPerformanceDTO performance = new SalesPerformanceDTO();
+            performance.setName(user.getUsername() != null ? user.getUsername() : user.getEmail());
+            performance.setTarget(mp.getTarget());
+            performance.setAchieved(achieved);
+            performance.setProgress(mp.getTarget().compareTo(BigDecimal.ZERO) != 0 ? achieved.divide(mp.getTarget(), 4, BigDecimal.ROUND_HALF_UP).multiply(BigDecimal.valueOf(100)).doubleValue() : 0.0);
+            performance.setUserId(user.getId());
+            performance.setMonthYear(LocalDateTime.of(year, month, 1, 0, 0)
+                    .getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + year);
+            performances.add(performance);
+        }
+        return performances;
     }
 
     public byte[] generateExcelReport(ReportDTO report) throws IOException {
@@ -177,12 +226,12 @@ public class ReportingService {
 
             rowNum++;
             headerRow = sheet.createRow(rowNum++);
-            headerCell  = headerRow.createCell(0);
+            headerCell = headerRow.createCell(0);
             headerCell.setCellValue("Sales Performance");
             headerCell.setCellStyle(headerStyle);
 
             Row performanceHeader = sheet.createRow(rowNum++);
-            String[] performanceColumns = {"User", "Target (TND)", "Achieved (TND)", "Progress (%)"};
+            String[] performanceColumns = {"User", "Target (TND)", "Achieved (TND)", "Progress (%)", "Month"};
             for (int i = 0; i < performanceColumns.length; i++) {
                 Cell cell = performanceHeader.createCell(i);
                 cell.setCellValue(performanceColumns[i]);
@@ -195,18 +244,13 @@ public class ReportingService {
                 row.createCell(1).setCellValue(performance.getTarget().doubleValue());
                 row.createCell(2).setCellValue(performance.getAchieved().doubleValue());
                 row.createCell(3).setCellValue(performance.getProgress());
+                row.createCell(4).setCellValue(performance.getMonthYear());
             }
 
-            for (int i = 0; i < 4; i++) sheet.autoSizeColumn(i);
+            for (int i = 0; i < 5; i++) sheet.autoSizeColumn(i);
             workbook.write(out);
             return out.toByteArray();
         }
-    }
-
-    private void createRow(Sheet sheet, int rowNum, String label, String value) {
-        Row row = sheet.createRow(rowNum);
-        row.createCell(0).setCellValue(label);
-        row.createCell(1).setCellValue(value);
     }
 
     public byte[] generatePdfReport(ReportDTO report) throws IOException {
@@ -215,33 +259,28 @@ public class ReportingService {
             document.addPage(page);
 
             try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
-                // Define fonts
                 PDType1Font titleFont = PDType1Font.HELVETICA_BOLD;
                 PDType1Font headerFont = PDType1Font.HELVETICA_BOLD;
                 PDType1Font textFont = PDType1Font.HELVETICA;
 
-                // Title
                 contentStream.beginText();
                 contentStream.setFont(titleFont, 18);
                 contentStream.newLineAtOffset(50, 750);
                 contentStream.showText("CRM Report");
                 contentStream.endText();
 
-                // Key Indicators Section
                 contentStream.beginText();
                 contentStream.setFont(headerFont, 14);
                 contentStream.newLineAtOffset(50, 720);
                 contentStream.showText("Key Indicators");
                 contentStream.endText();
 
-                // Table setup
                 float yPosition = 700;
                 float tableWidth = 500;
                 float margin = 50;
                 float rowHeight = 20;
                 float cellMargin = 5;
 
-                // Key Indicators Table Headers
                 contentStream.setFont(headerFont, 12);
                 contentStream.beginText();
                 contentStream.newLineAtOffset(margin, yPosition);
@@ -250,13 +289,11 @@ public class ReportingService {
                 contentStream.showText("Value");
                 contentStream.endText();
 
-                // Draw line under headers
                 contentStream.setLineWidth(1f);
                 contentStream.moveTo(margin, yPosition - 5);
                 contentStream.lineTo(margin + tableWidth, yPosition - 5);
                 contentStream.stroke();
 
-                // Key Indicators Data
                 contentStream.setFont(textFont, 10);
                 KeyIndicatorsDTO indicators = report.getKeyIndicators();
                 String[][] indicatorsData = {
@@ -279,7 +316,6 @@ public class ReportingService {
                     yPosition -= rowHeight;
                 }
 
-                // Sales Evolution Section
                 yPosition -= 20;
                 contentStream.beginText();
                 contentStream.setFont(headerFont, 14);
@@ -287,7 +323,6 @@ public class ReportingService {
                 contentStream.showText("Sales Evolution");
                 contentStream.endText();
 
-                // Sales Evolution Table Headers
                 yPosition -= 20;
                 contentStream.setFont(headerFont, 12);
                 contentStream.beginText();
@@ -299,12 +334,10 @@ public class ReportingService {
                 contentStream.showText("Opportunity Value (TND)");
                 contentStream.endText();
 
-                // Draw line under headers
                 contentStream.moveTo(margin, yPosition - 5);
                 contentStream.lineTo(margin + tableWidth, yPosition - 5);
                 contentStream.stroke();
 
-                // Sales Evolution Data
                 contentStream.setFont(textFont, 10);
                 yPosition -= rowHeight;
                 for (SalesEvolutionDTO evolution : report.getSalesEvolution()) {
@@ -319,7 +352,6 @@ public class ReportingService {
                     yPosition -= rowHeight;
                 }
 
-                // Sales Performance Section
                 yPosition -= 20;
                 contentStream.beginText();
                 contentStream.setFont(headerFont, 14);
@@ -327,7 +359,6 @@ public class ReportingService {
                 contentStream.showText("Sales Performance");
                 contentStream.endText();
 
-                // Sales Performance Table Headers
                 yPosition -= 20;
                 contentStream.setFont(headerFont, 12);
                 contentStream.beginText();
@@ -339,14 +370,14 @@ public class ReportingService {
                 contentStream.showText("Achieved (TND)");
                 contentStream.newLineAtOffset(100, 0);
                 contentStream.showText("Progress (%)");
+                contentStream.newLineAtOffset(100, 0);
+                contentStream.showText("Month");
                 contentStream.endText();
 
-                // Draw line under headers
                 contentStream.moveTo(margin, yPosition - 5);
                 contentStream.lineTo(margin + tableWidth, yPosition - 5);
                 contentStream.stroke();
 
-                // Sales Performance Data
                 contentStream.setFont(textFont, 10);
                 yPosition -= rowHeight;
                 for (SalesPerformanceDTO performance : report.getSalesPerformance()) {
@@ -359,6 +390,8 @@ public class ReportingService {
                     contentStream.showText(performance.getAchieved().toString());
                     contentStream.newLineAtOffset(100, 0);
                     contentStream.showText(String.format("%.2f%%", performance.getProgress()));
+                    contentStream.newLineAtOffset(100, 0);
+                    contentStream.showText(performance.getMonthYear());
                     contentStream.endText();
                     yPosition -= rowHeight;
                 }
@@ -368,13 +401,23 @@ public class ReportingService {
             return out.toByteArray();
         }
     }
-    private void addPdfLine(PDPageContentStream contentStream, String text, float x, float y) throws IOException {
-        contentStream.beginText();
-        contentStream.newLineAtOffset(x, y);
-        contentStream.showText(text);
-        contentStream.endText();
+
+    private void createRow(Sheet sheet, int rowNum, String label, String value) {
+        Row row = sheet.createRow(rowNum);
+        row.createCell(0).setCellValue(label);
+        row.createCell(1).setCellValue(value);
     }
 
+    @Transactional
+    public void setGlobalTarget(int year, int month, BigDecimal target) {
+        List<User> users = userRepository.findAll();
+        for (User user : users) {
+            MonthlyPerformance mp = monthlyPerformanceRepository.findByUserAndYearAndMonth(user, year, month)
+                    .orElse(new MonthlyPerformance(user, year, month, BigDecimal.valueOf(3000)));
+            mp.setTarget(target);
+            monthlyPerformanceRepository.save(mp);
+        }
+    }
     private User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {

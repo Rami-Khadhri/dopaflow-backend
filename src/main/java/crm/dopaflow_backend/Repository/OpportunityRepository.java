@@ -2,6 +2,7 @@ package crm.dopaflow_backend.Repository;
 
 import crm.dopaflow_backend.Model.Opportunity;
 import crm.dopaflow_backend.Model.StatutOpportunity;
+import crm.dopaflow_backend.Model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -34,4 +35,7 @@ public interface OpportunityRepository extends JpaRepository<Opportunity, Long> 
     List<Opportunity> findTop3ByOrderByValueDesc();
     @Query("SELECT COUNT(o) FROM Opportunity o WHERE o.createdAt >= :startDate AND o.status = :status")
     long countByCreatedAtAfterAndStatus(@Param("startDate") LocalDateTime startDate, @Param("status") StatutOpportunity status);
-}
+
+
+    // New method
+    List<Opportunity> findByOwnerAndStatusAndUpdatedAtBetween(User owner, StatutOpportunity status, LocalDateTime start, LocalDateTime end);}

@@ -1,18 +1,15 @@
 package crm.dopaflow_backend.DTO;
 
 import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
 
 import java.math.BigDecimal;
-@Getter
-@Setter
+
 @Data
 public class SalesPerformanceDTO {
-    private String name; // Username or email
-    private BigDecimal target; // Mocked target
-    private BigDecimal achieved; // Total value of WON opportunities for the user
-    private double progress; // Percentage of target achieved
-
-
+    private String name;
+    private BigDecimal target;
+    private BigDecimal achieved;
+    private Double progress;
+    private Long userId; // Added
+    private String monthYear; // Added for history (e.g., "January 2025")
 }

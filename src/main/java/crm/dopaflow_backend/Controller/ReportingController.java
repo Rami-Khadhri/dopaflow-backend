@@ -2,6 +2,7 @@ package crm.dopaflow_backend.Controller;
 
 import crm.dopaflow_backend.DTO.KeyIndicatorsDTO;
 import crm.dopaflow_backend.DTO.ReportDTO;
+import crm.dopaflow_backend.DTO.SalesPerformanceDTO;
 import crm.dopaflow_backend.Service.ReportingService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -11,14 +12,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/reporting")
@@ -46,6 +46,7 @@ public class ReportingController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
+
     @GetMapping("/export/excel")
     public ResponseEntity<byte[]> exportExcelReport() {
         try {
@@ -74,7 +75,7 @@ public class ReportingController {
             byte[] pdfBytes = reportingService.generatePdfReport(report);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
-            headers.setContentDispositionFormData("attachment", "crm-report-"+ LocalDateTime.now().format(DateTimeFormatter.ISO_DATE) +".pdf");
+            headers.setContentDispositionFormData("attachment", "crm-report-" + LocalDateTime.now().format(DateTimeFormatter.ISO_DATE) + ".pdf");
             logger.info("Returning PDF report");
             return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
         } catch (SecurityException e) {
@@ -86,6 +87,46 @@ public class ReportingController {
         }
     }
 
+    @GetMapping("/history/user/{userId}")
+    @PreAuthorize("hasAnyRole('Admin', 'SuperAdmin') or #userId == authentication.principal.id")
+    public ResponseEntity<List<SalesPerformanceDTO>> getUserHistory(@PathVariable Long userId) {
+        try {
+            List<SalesPerformanceDTO> history = reportingService.getUserHistory(userId);
+            return ResponseEntity.ok(history);
+        } catch (Exception e) {
+            logger.error("Error fetching user history: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/history/team/{year}/{month}")
+    @PreAuthorize("hasAnyRole('Admin', 'SuperAdmin')")
+    public ResponseEntity<List<SalesPerformanceDTO>> getTeamHistory(
+            @PathVariable int year,
+            @PathVariable int month) {
+        try {
+            List<SalesPerformanceDTO> teamPerformance = reportingService.getTeamPerformanceForMonth(year, month);
+            return ResponseEntity.ok(teamPerformance);
+        } catch (Exception e) {
+            logger.error("Error fetching team history: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    @PostMapping("/set-global-target")
+    @PreAuthorize("hasRole('SuperAdmin')")
+    public ResponseEntity<Void> setGlobalTarget(
+            @RequestParam int year,
+            @RequestParam int month,
+            @RequestParam BigDecimal target) {
+        try {
+            logger.info("Setting global target for year: {}, month: {}, target: {}", year, month, target);
+            reportingService.setGlobalTarget(year, month, target);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            logger.error("Error setting global target: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
     private ReportDTO createEmptyReportDTO() {
         ReportDTO errorResponse = new ReportDTO();
         KeyIndicatorsDTO errorIndicators = new KeyIndicatorsDTO();
@@ -100,4 +141,5 @@ public class ReportingController {
         errorResponse.setSalesPerformance(new ArrayList<>());
         return errorResponse;
     }
+
 }
