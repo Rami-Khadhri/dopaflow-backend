@@ -43,14 +43,14 @@ public class CompanyService {
         return companyRepository.findByNameContainingIgnoreCase(query, pageable);
     }
 
-    public Page<Company> filterCompanies(String status, Long ownerId, boolean unassignedOnly, boolean assignedOnly,
+    public Page<Company> filterCompanies(String status, Long ownerId, boolean unassignedOnly,
                                          int page, int size, String sort) {
         Pageable pageable = PageRequest.of(page, size, parseSort(sort));
         String filteredStatus = (status != null && !status.trim().isEmpty()) ? status : "ANY";
 
         if ("ANY".equals(filteredStatus)) {
-            if (assignedOnly) {
-                return companyRepository.findByOwnerIsNotNull(pageable);
+            if (unassignedOnly) {
+                return companyRepository.findByOwnerIsNull(pageable);
             } else if (ownerId != null) {
                 return companyRepository.findByOwnerId(ownerId, pageable);
             } else {

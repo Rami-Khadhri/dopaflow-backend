@@ -31,10 +31,21 @@ public class OpportunityService {
     }
 
     public Opportunity createOpportunity(Opportunity opportunity) {
-        // Set default status based on stage
-        if (opportunity.getStatus() == null) {
-            opportunity.setStatus(opportunity.getStage() == Stage.CLOSED ? StatutOpportunity.WON : StatutOpportunity.IN_PROGRESS);
+        // Vérifier si l'étape est CLOSED
+        if (opportunity.getStage() == Stage.CLOSED) {
+            // Si l'étape est CLOSED et le statut n'est pas déjà WON ou LOST, 
+            // définir par défaut à WON
+            if (opportunity.getStatus() != StatutOpportunity.WON && 
+                opportunity.getStatus() != StatutOpportunity.LOST) {
+                opportunity.setStatus(StatutOpportunity.WON);
+            }
+        } else {
+            // Pour les autres étapes, définir à IN_PROGRESS si statut est null
+            if (opportunity.getStatus() == null) {
+                opportunity.setStatus(StatutOpportunity.IN_PROGRESS);
+            }
         }
+        
         validateOpportunity(opportunity);
         return opportunityRepository.save(opportunity);
     }

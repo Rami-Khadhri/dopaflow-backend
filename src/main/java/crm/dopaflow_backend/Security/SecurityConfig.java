@@ -4,7 +4,9 @@ import crm.dopaflow_backend.Service.UserService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -20,6 +22,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
     private final JwtUtil jwtUtil;
     private final ObjectProvider<UserService> userServiceProvider;
 
@@ -33,33 +36,33 @@ public class SecurityConfig {
         JwtAuthFilter jwtAuthFilter = new JwtAuthFilter(jwtUtil, userServiceProvider);
 
         http
-                .csrf(AbstractHttpConfigurer::disable) // Disable CSRF for stateless API
-                .cors(cors -> cors.configure(http)) // Enable CORS
+                .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                         // Public endpoints
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/register",
                                 "/api/auth/verify-email",
-                                "/api/users/**",
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password",
+                                "/api/users/all",
+                                "/api/users/suspend-self",
                                 "/api/profile/upload-photo",
                                 "/api/profile/set-avatar",
                                 "/static/**",
-                                "/photos/**", // Serve uploaded photos
-                                "/attachments/**", // Serve uploaded photos
-                                "/contact-photos/**", // Serve uploaded photos
-                                "company-photos/**",
+                                "/photos/**",
+                                "/attachments/**",
+                                "/contact-photos/**",
+                                "/company-photos/**",
                                 "/avatars/**",
-                                "/api/users/all", // Explicitly public
-                                "/api/users/suspend-self",
                                 "/ws/**"
-
                         ).permitAll()
 
                         // Authenticated endpoints
-                        .requestMatchers("/api/auth/2fa/**",
+                        .requestMatchers(
+                                "/api/auth/2fa/**",
                                 "/api/contacts/**",
                                 "/api/users/**",
                                 "/api/opportunities/**",
@@ -67,8 +70,8 @@ public class SecurityConfig {
                                 "/api/support/**",
                                 "/api/companies/**",
                                 "/api/reporting/**"
-
                         ).authenticated()
+
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -78,8 +81,13 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
-        return authenticationConfiguration.getAuthenticationManager();
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
@@ -87,31 +95,22 @@ public class SecurityConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addResourceHandlers(ResourceHandlerRegistry registry) {
-                // Map /photos/ to file:uploads/photos/
                 registry.addResourceHandler("/photos/**")
                         .addResourceLocations("file:uploads/photos/")
-                        .setCachePeriod(0); // Disable caching for development
-
+                        .setCachePeriod(0);
                 registry.addResourceHandler("/contact-photos/**")
                         .addResourceLocations("file:uploads/contact-photos/")
-                        .setCachePeriod(0); // Disable caching for development
+                        .setCachePeriod(0);
                 registry.addResourceHandler("/company-photos/**")
                         .addResourceLocations("file:uploads/company-photos/")
-                        .setCachePeriod(0); // Disable caching for development
+                        .setCachePeriod(0);
                 registry.addResourceHandler("/attachments/**")
                         .addResourceLocations("file:uploads/attachments/")
-                        .setCachePeriod(0); // Disable caching for development
-
-                // Map /avatars/ to file:uploads/avatars/
+                        .setCachePeriod(0);
                 registry.addResourceHandler("/avatars/**")
                         .addResourceLocations("file:uploads/avatars/")
-                        .setCachePeriod(0); // Disable caching for development
+                        .setCachePeriod(0);
             }
         };
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
     }
 }

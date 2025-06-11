@@ -27,7 +27,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class TaskService {
 
-    private static final String TIME_ZONE = "Etc/GMT-1"; // GMT+1
+    private static final String TIME_ZONE = "Africa/Tunis"; // Updated to Tunisia's time zone
 
     private final TaskRepository taskRepository;
     private final OpportunityRepository opportunityRepository;
@@ -326,9 +326,8 @@ public class TaskService {
 
         ZoneId localZone = ZoneId.of(TIME_ZONE);
         LocalDateTime localDeadline = LocalDateTime.ofInstant(task.getDeadline().toInstant(), localZone);
-        LocalDateTime localDate = localDeadline;
         LocalDateTime today = LocalDateTime.now(localZone);
-        if (localDate.isBefore(today.plusDays(1))) {
+        if (localDeadline.isBefore(today.plusDays(1))) {
             throw new IllegalArgumentException("Deadline must be at least tomorrow");
         }
 
@@ -366,49 +365,54 @@ public class TaskService {
             throw new RuntimeException("Cannot update archived tasks");
         }
 
-        // Apply restrictions for non-admin users when task is InProgress
-        if (task.getStatutTask() == StatutTask.InProgress && !hasAdminPrivileges(currentUser)) {
-            // Only allow updating priority and assigned user for regular users
-            if (taskDetails.getTitle() != null || taskDetails.getDeadline() != null ||
-                    taskDetails.getTypeTask() != null || taskDetails.getOpportunity() != null ||
-                    taskDetails.getDescription() != null) {
-                throw new IllegalArgumentException("In-progress tasks can only update priority and assigned user for regular users");
+        if (task.getStatutTask() == StatutTask.InProgress) {
+            // For InProgress tasks, only update assigned user
+            if (assignedUserId != null) {
+                User assignedUser = userRepository.findById(assignedUserId)
+                        .orElseThrow(() -> new RuntimeException("User not found with id: " + assignedUserId));
+                if (!hasAdminPrivileges(currentUser) && !currentUser.getId().equals(assignedUserId)) {
+                    throw new SecurityException("Regular users can only assign tasks to themselves");
+                }
+                if (previousAssignedUser == null || !previousAssignedUser.getId().equals(assignedUserId)) {
+                    task.setAssignedUser(assignedUser);
+                    createNotification(assignedUser, task, Notification.NotificationType.TASK_ASSIGNED);
+                }
             }
-        }
-
-        if (taskDetails.getDeadline() != null) {
-            ZoneId localZone = ZoneId.of(TIME_ZONE);
-            LocalDateTime localDeadline = LocalDateTime.ofInstant(taskDetails.getDeadline().toInstant(), localZone);
-            LocalDateTime localDate = localDeadline;
-            LocalDateTime today = LocalDateTime.now(localZone);
-            if (localDate.isBefore(today.plusDays(1))) {
-                throw new IllegalArgumentException("Deadline must be at least tomorrow");
+            // Ignore other fields, including deadline, for InProgress tasks
+        } else {
+            // For other statuses, update all fields with validation
+            if (taskDetails.getTitle() != null) task.setTitle(taskDetails.getTitle());
+            if (taskDetails.getDescription() != null) task.setDescription(taskDetails.getDescription());
+            if (taskDetails.getDeadline() != null) {
+                ZoneId localZone = ZoneId.of(TIME_ZONE);
+                LocalDateTime localDeadline = LocalDateTime.ofInstant(taskDetails.getDeadline().toInstant(), localZone);
+                LocalDateTime today = LocalDateTime.now(localZone);
+                if (localDeadline.isBefore(today.plusDays(1))) {
+                    throw new IllegalArgumentException("Deadline must be at least tomorrow");
+                }
+                task.setDeadline(taskDetails.getDeadline());
             }
-        }
+            if (taskDetails.getPriority() != null) task.setPriority(taskDetails.getPriority());
+            if (taskDetails.getStatutTask() != null) task.setStatutTask(taskDetails.getStatutTask());
+            if (taskDetails.getTypeTask() != null) task.setTypeTask(taskDetails.getTypeTask());
 
-        if (assignedUserId != null) {
-            User assignedUser = userRepository.findById(assignedUserId)
-                    .orElseThrow(() -> new RuntimeException("User not found with id: " + assignedUserId));
-            if (!hasAdminPrivileges(currentUser) && !currentUser.getId().equals(assignedUserId)) {
-                throw new SecurityException("Regular users can only assign tasks to themselves");
+            if (taskDetails.getOpportunity() != null && taskDetails.getOpportunity().getId() != null) {
+                Opportunity opportunity = opportunityRepository.findById(taskDetails.getOpportunity().getId())
+                        .orElseThrow(() -> new RuntimeException("Opportunity not found with id: " + taskDetails.getOpportunity().getId()));
+                task.setOpportunity(opportunity);
             }
-            if (previousAssignedUser == null || !previousAssignedUser.getId().equals(assignedUserId)) {
-                task.setAssignedUser(assignedUser);
-                createNotification(assignedUser, task, Notification.NotificationType.TASK_ASSIGNED);
+
+            if (assignedUserId != null) {
+                User assignedUser = userRepository.findById(assignedUserId)
+                        .orElseThrow(() -> new RuntimeException("User not found with id: " + assignedUserId));
+                if (!hasAdminPrivileges(currentUser) && !currentUser.getId().equals(assignedUserId)) {
+                    throw new SecurityException("Regular users can only assign tasks to themselves");
+                }
+                if (previousAssignedUser == null || !previousAssignedUser.getId().equals(assignedUserId)) {
+                    task.setAssignedUser(assignedUser);
+                    createNotification(assignedUser, task, Notification.NotificationType.TASK_ASSIGNED);
+                }
             }
-        }
-
-        if (taskDetails.getTitle() != null) task.setTitle(taskDetails.getTitle());
-        if (taskDetails.getDescription() != null) task.setDescription(taskDetails.getDescription());
-        if (taskDetails.getDeadline() != null) task.setDeadline(taskDetails.getDeadline());
-        if (taskDetails.getPriority() != null) task.setPriority(taskDetails.getPriority());
-        if (taskDetails.getStatutTask() != null) task.setStatutTask(taskDetails.getStatutTask());
-        if (taskDetails.getTypeTask() != null) task.setTypeTask(taskDetails.getTypeTask());
-
-        if (taskDetails.getOpportunity() != null && taskDetails.getOpportunity().getId() != null) {
-            Opportunity opportunity = opportunityRepository.findById(taskDetails.getOpportunity().getId())
-                    .orElseThrow(() -> new RuntimeException("Opportunity not found with id: " + taskDetails.getOpportunity().getId()));
-            task.setOpportunity(opportunity);
         }
 
         return taskRepository.save(task);
