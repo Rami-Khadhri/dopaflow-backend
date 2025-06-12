@@ -1,6 +1,7 @@
 package crm.dopaflow_backend.Model;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
@@ -55,8 +56,8 @@ public class Contact {
     @Transient
     private String ownerUsername;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "contact", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "contact"})
     private List<Opportunity> opportunities = new ArrayList<>();
 
 

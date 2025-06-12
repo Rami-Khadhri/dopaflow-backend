@@ -49,6 +49,9 @@ public class AuthService {
         if (user.getStatus().equals(StatutUser.Suspended)) {
             throw new RuntimeException("Account is suspended,Contact an admin");
         }
+        if (user.getStatus().equals(StatutUser.Inactive)) {
+            throw new RuntimeException("Your account cannot be accessed ! Unauthorized Access. Please contact your administration to request approval.");
+        }
         // Record login details
         String ipAddress = httpRequest.getRemoteAddr();
         String userAgent = httpRequest.getHeader("User-Agent");

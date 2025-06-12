@@ -53,7 +53,7 @@ public class UserService {
                 .password(passwordEncoder.encode(password))
                 .role(role)
                 .birthdate(birthdate)
-                .status(StatutUser.Active)
+                .status(StatutUser.Inactive)
                 .lastLogin(new Date())
                 .verificationToken(UUID.randomUUID().toString())
                 .verified(false)
